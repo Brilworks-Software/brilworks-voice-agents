@@ -25,14 +25,9 @@ A Next.js application featuring AI-powered voice agents for multiple industries 
 npm install
 ```
 
-2. Create a `.env.local` file in the root directory:
-```bash
-cp .env.local.example .env.local
+2. Create a `.env.local` file in the root directory and add your Gemini API key:
 ```
-
-3. Add your Gemini API key to `.env.local`:
-```
-NEXT_PUBLIC_GEMINI_API_KEY=your_actual_api_key_here
+NEXT_PUBLIC_GEMINI_API_KEY=paste your actual api key here
 ```
 
 ### Running the Development Server
