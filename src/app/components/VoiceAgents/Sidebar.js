@@ -1,12 +1,22 @@
 "use client";
 import React, { useState } from 'react';
 
-const Sidebar = ({ industry, data, onUpdateData }) => {
+const Sidebar = ({ industry, data, onUpdateData, onSubmitLead, isSubmitting }) => {
   const [editingKey, setEditingKey] = useState(null);
   const [editValue, setEditValue] = useState("");
 
   const fields = Object.entries(data);
   const isRealEstate = industry.id === 'real_estate';
+  
+  // Check if all required fields are captured (BANT + Name + Email + Schedule Meeting)
+  const requiredFields = ['budget', 'authority', 'need', 'timeline', 'contact_name', 'email', 'schedule_meeting_at'];
+  const hasAllRequiredFields = requiredFields.every(field => {
+    const fieldKey = Object.keys(data).find(key => key.toLowerCase() === field.toLowerCase());
+    return fieldKey && data[fieldKey] && String(data[fieldKey]).trim() !== '';
+  });
+  
+  // Check if already submitted
+  const isSubmitted = data['crm_sync'] === 'Synced to Google Sheets ✅';
 
   const filterKeys = ['budget', 'bedrooms', 'location', 'price_range'];
   const filters = fields.filter(([key]) => filterKeys.includes(key.toLowerCase()));
@@ -121,7 +131,7 @@ const Sidebar = ({ industry, data, onUpdateData }) => {
       </div>
 
       {/* Captured Context (Editable) */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-y-auto custom-scrollbar">
         <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center">
           <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
             {isRealEstate ? 'Client Profile' : 'Captured Context'}
@@ -179,6 +189,61 @@ const Sidebar = ({ industry, data, onUpdateData }) => {
               )
             )}
           </div>
+          
+          {/* Submit Button */}
+          {hasAllRequiredFields && !isSubmitted && onSubmitLead && (
+            <div className="pt-4 border-t border-slate-200">
+              <button
+                onClick={onSubmitLead}
+                disabled={isSubmitting}
+                className={`w-full py-3 px-4 rounded-xl font-bold text-sm transition-all duration-200 shadow-lg ${
+                  isSubmitting
+                    ? 'bg-slate-400 text-white cursor-not-allowed'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 transform hover:scale-105 active:scale-95'
+                }`}
+              >
+                {isSubmitting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Submitting...
+                  </span>
+                ) : (
+                  '✓ Submit Requirements'
+                )}
+              </button>
+              <p className="text-[10px] text-slate-500 text-center mt-2">
+                Send your information to our specialist team
+              </p>
+            </div>
+          )}
+          
+          {/* Missing Fields Indicator */}
+          {!hasAllRequiredFields && fields.length > 0 && (
+            <div className="pt-4 border-t border-slate-200">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-xs font-semibold text-amber-800 mb-2">📋 Required Information</p>
+                <div className="space-y-1">
+                  {requiredFields.map(field => {
+                    const fieldKey = Object.keys(data).find(key => key.toLowerCase() === field.toLowerCase());
+                    const isCaptured = fieldKey && data[fieldKey] && String(data[fieldKey]).trim() !== '';
+                    return (
+                      <div key={field} className="flex items-center gap-2 text-[10px]">
+                        <span className={isCaptured ? 'text-green-600' : 'text-amber-600'}>
+                          {isCaptured ? '✓' : '○'}
+                        </span>
+                        <span className={isCaptured ? 'text-slate-600' : 'text-amber-700 font-medium'}>
+                          {field.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
