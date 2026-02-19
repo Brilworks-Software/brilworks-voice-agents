@@ -41,6 +41,8 @@ const VoiceSession = forwardRef(
     const pendingTimeoutRef = useRef(null);
     const isSessionActiveRef = useRef(false);
     const capturedDataRef = useRef(capturedData);
+    const reconnectAttemptsRef = useRef(0);
+    const MAX_RECONNECT_ATTEMPTS = 20;
 
     useImperativeHandle(ref, () => ({
       sendMessage: (msg) => {
@@ -238,6 +240,9 @@ const VoiceSession = forwardRef(
           model: liveConnectConfig.model,
           callbacks: {
             onopen: () => {
+              // Reset reconnect counter on successful connection
+              reconnectAttemptsRef.current = 0;
+
               const source =
                 audioContextRef.current.createMediaStreamSource(stream);
               const scriptProcessor =
@@ -460,7 +465,6 @@ const VoiceSession = forwardRef(
 
               if (message.toolCall) {
                 for (const fc of message.toolCall.functionCalls) {
-                  console.log("fucntioin call", fc);
                   if (fc.name === "capture_information") {
                     const args = fc.args;
                     onDataCaptured({ [args.field_name]: args.value });
@@ -536,6 +540,51 @@ const VoiceSession = forwardRef(
               if (event.code === 1006 || event.code === 1011) {
                 console.warn(
                   "Session closed abnormally - possible timeout or network issue",
+                );
+              }
+
+              // Reconnect on policy violation (1008)
+              if (
+                event.code === 1008 &&
+                reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS
+              ) {
+                reconnectAttemptsRef.current += 1;
+                console.warn(
+                  `WebSocket closed with policy violation (1008). Reconnecting... (attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})`,
+                );
+
+                // Clean up existing resources before reconnecting
+                if (scriptProcessorRef.current) {
+                  try {
+                    scriptProcessorRef.current.disconnect();
+                  } catch (e) {}
+                  scriptProcessorRef.current = null;
+                }
+                sessionRef.current = null;
+                sessionPromiseRef.current = null;
+                if (audioContextRef.current) {
+                  try {
+                    audioContextRef.current.close();
+                  } catch (e) {}
+                  audioContextRef.current = null;
+                }
+                if (outputAudioContextRef.current) {
+                  try {
+                    outputAudioContextRef.current.close();
+                  } catch (e) {}
+                  outputAudioContextRef.current = null;
+                }
+
+                // Attempt reconnect after a short delay
+                setTimeout(() => {
+                  startLiveSession();
+                }, 1500);
+                return;
+              }
+
+              if (event.code === 1008) {
+                console.error(
+                  `WebSocket closed with policy violation (1008) after ${MAX_RECONNECT_ATTEMPTS} reconnect attempts. Giving up.`,
                 );
               }
 
@@ -704,7 +753,7 @@ const VoiceSession = forwardRef(
     // The data is still available in the component state for the agent to reference
 
     return (
-      <div className="flex flex-col items-center justify-center space-y-8 py-4">
+      <div className="flex flex-col items-center justify-center space-y-4 py-2">
         <div className="relative">
           {isActive && (
             <div className="absolute inset-0 pulsate bg-blue-400 rounded-full blur-2xl opacity-20 -z-10" />

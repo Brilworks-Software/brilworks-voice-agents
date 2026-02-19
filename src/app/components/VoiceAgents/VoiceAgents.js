@@ -240,7 +240,7 @@ const VoiceAgents = () => {
           )}
 
           {view === "agent" && selectedIndustry && (
-            <div className="flex flex-col h-full space-y-4 max-w-5xl mx-auto w-full">
+            <div className="flex flex-col md:h-full space-y-4 max-w-5xl mx-auto w-full md:overflow-hidden">
               <div className="flex items-center justify-between">
                 <button
                   onClick={() => {
@@ -262,9 +262,9 @@ const VoiceAgents = () => {
                 </div>
               </div>
 
-              <div className="flex flex-col md:flex-row gap-6 h-full min-h-0">
-                <div className="flex-1 flex flex-col space-y-4">
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex-1 flex flex-col">
+              <div className="flex flex-col md:flex-row gap-6 md:flex-1 md:min-h-0 md:overflow-hidden">
+                <div className="md:flex-1 flex flex-col space-y-4 md:min-h-0">
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:flex-1 flex flex-col md:min-h-0 md:overflow-hidden">
                     <div className="flex items-center justify-between mb-6">
                       <div className="flex items-center space-x-3">
                         <div
@@ -312,7 +312,7 @@ const VoiceAgents = () => {
                       capturedData={capturedData}
                     />
 
-                    <div className="mt-6 h-96 overflow-y-auto space-y-4 bg-slate-50 rounded-xl p-4 border border-slate-100 custom-scrollbar">
+                    <div className="mt-6 md:flex-1 md:min-h-0 h-64 md:h-auto overflow-y-auto space-y-4 bg-slate-50 rounded-xl p-4 border border-slate-100 custom-scrollbar">
                       {transcriptionHistory.length === 0 ? (
                         <div className="flex items-center justify-center h-full text-slate-400 italic text-sm">
                           {selectedLanguage.code === "auto"
@@ -346,7 +346,7 @@ const VoiceAgents = () => {
                   </div>
                 </div>
 
-                <div className="w-full md:w-80 space-y-4 h-full overflow-y-auto custom-scrollbar">
+                <div className="w-full md:w-80 space-y-4 md:h-full overflow-y-auto custom-scrollbar">
                   <Sidebar
                     industry={selectedIndustry}
                     data={capturedData}
