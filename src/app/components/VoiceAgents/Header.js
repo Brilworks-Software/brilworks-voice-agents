@@ -3,7 +3,6 @@ import React from 'react';
 import { LANGUAGES } from './constants';
 
 const Header = ({ 
-  onAdminClick, 
   onHomeClick, 
   selectedLanguage, 
   onLanguageChange 
@@ -48,14 +47,6 @@ const Header = ({
         </nav>
         
         <div className="h-6 w-px bg-slate-200" />
-        
-        <button 
-          onClick={onAdminClick}
-          className="text-sm font-semibold bg-blue-50 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-100 transition-colors flex items-center"
-        >
-          <span className="mr-2">📊</span>
-          Admin Console
-        </button>
       </div>
     </header>
   );
