@@ -11,6 +11,7 @@ import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { encode, decode, decodeAudioData } from "./services/audioUtils";
 import { getBrilworksBase } from "./constants";
 import { authService } from "@/services/authService";
+import { authService } from "@/services/authService";
 
 const VoiceSession = forwardRef(
   (
@@ -26,9 +27,25 @@ const VoiceSession = forwardRef(
       // customFields is optional — existing 15 agents don't pass it and get default []
       customFields = [],
       enableKnowledgeBase = false,
+      // customFields is optional — existing 15 agents don't pass it and get default []
+      customFields = [],
+      enableKnowledgeBase = false,
     },
     ref,
   ) => {
+    console.log({
+      industry,
+      language,
+      isActive,
+      onStart,
+      onStop,
+      onMessage,
+      onDataCaptured,
+      capturedData,
+      // customFields is optional — existing 15 agents don't pass it and get default []
+      customFields,
+      enableKnowledgeBase,
+    });
     console.log({
       industry,
       language,
