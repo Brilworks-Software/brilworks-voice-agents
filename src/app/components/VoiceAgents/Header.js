@@ -1,10 +1,51 @@
 "use client";
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import PropTypes from "prop-types";
 import { LANGUAGES } from "./constants";
+import { authService } from "../../../services/authService";
 
 const Header = ({ onHomeClick, selectedLanguage, onLanguageChange }) => {
+  const [user, setUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Check current user on component mount
+    const checkUser = async () => {
+      try {
+        const currentUser = await authService.getCurrentUser();
+        setUser(currentUser);
+      } catch (error) {
+        console.error("Error checking user:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkUser();
+
+    // Subscribe to auth state changes
+    const subscription = authService.onAuthStateChange((event, session) => {
+      setUser(session?.user || null);
+    });
+
+    return () => {
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await authService.signOut();
+      setUser(null);
+    } catch (error) {
+      console.error("Error logging out:", error);
+    }
+  };
+
   return (
     <header className="bg-white border-b border-slate-200 px-4 md:px-14 2xl:px-[300px] py-4 flex items-center justify-between z-10 shadow-sm">
       <div className="header_logo">
@@ -51,10 +92,53 @@ const Header = ({ onHomeClick, selectedLanguage, onLanguageChange }) => {
               ))}
             </div>
           </div>
+
+          {!isLoading &&
+            (user ? (
+              <>
+                <Link
+                  href="/dashboard"
+                  className="text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors"
+                >
+                  Dashboard
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="text-sm font-medium text-slate-600 hover:text-red-600 transition-colors"
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/auth/login"
+                  className="text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors"
+                >
+                  Login
+                </Link>
+                <Link
+                  href="/auth/signup"
+                  className="text-sm font-medium bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Sign Up
+                </Link>
+              </>
+            ))}
         </nav>
       </div>
     </header>
   );
+};
+
+Header.propTypes = {
+  onHomeClick: PropTypes.func.isRequired,
+  selectedLanguage: PropTypes.shape({
+    code: PropTypes.string.isRequired,
+    name: PropTypes.string.isRequired,
+    flag: PropTypes.string.isRequired,
+  }).isRequired,
+  onLanguageChange: PropTypes.func.isRequired,
 };
 
 export default Header;
