@@ -12,7 +12,7 @@ import { encode, decode, decodeAudioData } from "./services/audioUtils";
 import { getBrilworksBase } from "./constants";
 import { authService } from "@/services/authService";
 
-const VoiceSession = forwardRef(
+const CustomVoiceSession = forwardRef(
   (
     {
       industry,
@@ -356,7 +356,7 @@ const VoiceSession = forwardRef(
           normalizedCustomFields.length > 0;
 
         const leadQualificationGuidance = shouldIncludeQualificationTools
-          ? "\n\nLEAD QUALIFICATION GUIDANCE:\n- My role is to let the user know I can answer their questions.\n- I will also ask for the details needed to qualify leads.\n- Keep responses concise, relevant, and focused on lead qualification outcomes."
+          ? "\n\nLEAD QUALIFICATION GUIDANCE:\n- If the user asks a question, answer it clearly and helpfully first.\n- If the user has no question, proactively collect information required for lead capture.\n- While answering, keep moving the conversation toward capturing missing required lead details.\n- Keep responses concise, relevant, and focused on qualification goals."
           : "";
 
         // For custom agents: use the user's system prompt directly — no sub-prompts
@@ -1061,7 +1061,7 @@ const VoiceSession = forwardRef(
                 ))}
               </div>
             ) : (
-              <div className="text-4xl">🎙️</div>
+              <div className="text-xl">🎙️</div>
             )}
           </div>
         </div>
@@ -1094,6 +1094,6 @@ const VoiceSession = forwardRef(
   },
 );
 
-VoiceSession.displayName = "VoiceSession";
+CustomVoiceSession.displayName = "CustomVoiceSession";
 
-export default VoiceSession;
+export default CustomVoiceSession;
