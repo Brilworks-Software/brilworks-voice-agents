@@ -41,6 +41,23 @@ const iconMap = {
   UtensilsCrossed,
 };
 
+const isValidCapturedValue = (value) =>
+  value !== undefined &&
+  value !== null &&
+  (typeof value !== "string" || value.trim() !== "");
+
+const mergeCapturedData = (previousData, incomingData) => {
+  const updatedData = { ...previousData };
+  Object.entries(incomingData || {}).forEach(([key, value]) => {
+    if (isValidCapturedValue(value)) {
+      updatedData[key] = value;
+    } else {
+      delete updatedData[key];
+    }
+  });
+  return updatedData;
+};
+
 const VoiceAgents = () => {
   const [view, setView] = useState("home");
   const [selectedIndustry, setSelectedIndustry] = useState(null);
@@ -88,14 +105,11 @@ const VoiceAgents = () => {
 
   const handleCapturedData = useCallback((data) => {
     console.log("Data is captured for the user", data);
-    setCapturedData((prev) => {
-      const updated = { ...prev, ...data };
-      return updated;
-    });
+    setCapturedData((prev) => mergeCapturedData(prev, data));
   }, []);
 
   const handleUpdateData = (key, value) => {
-    setCapturedData((prev) => ({ ...prev, [key]: value }));
+    setCapturedData((prev) => mergeCapturedData(prev, { [key]: value }));
     if (isSessionActive && voiceSessionRef.current) {
       voiceSessionRef.current.sendMessage(
         `[SYSTEM UPDATE: User has manually updated their ${key} to "${value}". Please acknowledge and use this new value moving forward.]`,

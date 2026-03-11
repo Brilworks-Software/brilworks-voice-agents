@@ -1,5 +1,41 @@
-import { createServerClient } from "@/lib/supabase/server";
+import { createServerClient, supabaseAdmin } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+
+async function getAuthenticatedContext(request) {
+  const supabase = await createServerClient();
+  const authorization = request.headers.get("authorization") || "";
+  const token = authorization.startsWith("Bearer ")
+    ? authorization.slice(7)
+    : "";
+
+  if (token) {
+    const {
+      data: { user },
+      error,
+    } = await supabaseAdmin.auth.getUser(token);
+
+    if (error || !user) {
+      return {
+        user: null,
+        error: error || new Error("Unauthorized"),
+        db: null,
+      };
+    }
+
+    return { user, error: null, db: supabaseAdmin };
+  }
+
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error || !user) {
+    return { user: null, error: error || new Error("Unauthorized"), db: null };
+  }
+
+  return { user, error: null, db: supabase };
+}
 
 /**
  * GET /api/agents/[id]/leads
@@ -7,24 +43,24 @@ import { NextResponse } from "next/server";
  */
 export async function GET(request, { params }) {
   try {
-    const supabase = await createServerClient();
-    const { id } = params;
+    const { id } = await params;
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get("limit") || "50");
-    const offset = parseInt(searchParams.get("offset") || "0");
+    const limit = Number.parseInt(searchParams.get("limit") || "50");
+    const offset = Number.parseInt(searchParams.get("offset") || "0");
 
     // Get current user
     const {
-      data: { user },
+      user,
       error: authError,
-    } = await supabase.auth.getUser();
+      db,
+    } = await getAuthenticatedContext(request);
 
-    if (authError || !user) {
+    if (authError || !user || !db) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Verify agent belongs to user
-    const { data: agent, error: agentError } = await supabase
+    const { data: agent, error: agentError } = await db
       .from("voice_agents")
       .select("id, name")
       .eq("id", id)
@@ -40,7 +76,7 @@ export async function GET(request, { params }) {
       data: leads,
       error: leadsError,
       count,
-    } = await supabase
+    } = await db
       .from("captured_leads")
       .select("*", { count: "exact" })
       .eq("agent_id", id)
@@ -52,7 +88,7 @@ export async function GET(request, { params }) {
     }
 
     // Get statistics
-    const { data: stats } = await supabase
+    const { data: stats } = await db
       .from("captured_leads")
       .select("lead_score")
       .eq("agent_id", id);
@@ -88,22 +124,22 @@ export async function GET(request, { params }) {
  */
 export async function POST(request, { params }) {
   try {
-    const supabase = await createServerClient();
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
 
     // Get current user
     const {
-      data: { user },
+      user,
       error: authError,
-    } = await supabase.auth.getUser();
+      db,
+    } = await getAuthenticatedContext(request);
 
-    if (authError || !user) {
+    if (authError || !user || !db) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Verify agent belongs to user
-    const { data: agent, error: agentError } = await supabase
+    const { data: agent, error: agentError } = await db
       .from("voice_agents")
       .select("id")
       .eq("id", id)
@@ -133,7 +169,7 @@ export async function POST(request, { params }) {
       messages_count: body.messages_count || 0,
     };
 
-    const { data: lead, error: leadError } = await supabase
+    const { data: lead, error: leadError } = await db
       .from("captured_leads")
       .insert(leadData)
       .select()

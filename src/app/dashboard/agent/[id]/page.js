@@ -49,6 +49,23 @@ const getLanguageName = (code) => {
   return languageMap[code] || code;
 };
 
+const isValidCapturedValue = (value) =>
+  value !== undefined &&
+  value !== null &&
+  (typeof value !== "string" || value.trim() !== "");
+
+const mergeCapturedData = (previousData, incomingData) => {
+  const updatedData = { ...previousData };
+  Object.entries(incomingData || {}).forEach(([key, value]) => {
+    if (isValidCapturedValue(value)) {
+      updatedData[key] = value;
+    } else {
+      delete updatedData[key];
+    }
+  });
+  return updatedData;
+};
+
 export default function LaunchAgentPage() {
   const router = useRouter();
   const params = useParams();
@@ -62,6 +79,7 @@ export default function LaunchAgentPage() {
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [capturedData, setCapturedData] = useState({});
   const [conversationLog, setConversationLog] = useState([]);
+  const [isSubmittingLead, setIsSubmittingLead] = useState(false);
 
   const voiceSessionRef = useRef(null);
 
@@ -139,11 +157,155 @@ export default function LaunchAgentPage() {
   }, []);
 
   const handleDataCaptured = useCallback((data) => {
-    setCapturedData((prev) => ({
-      ...prev,
-      ...data,
-    }));
+    setCapturedData((prev) => mergeCapturedData(prev, data));
   }, []);
+
+  const visibleCapturedEntries = Object.entries(capturedData).filter(
+    ([, value]) => isValidCapturedValue(value),
+  );
+
+  const getFieldValue = useCallback(
+    (fieldName) => {
+      const matchedKey = Object.keys(capturedData).find(
+        (key) => key.toLowerCase() === fieldName.toLowerCase(),
+      );
+      return matchedKey ? capturedData[matchedKey] : undefined;
+    },
+    [capturedData],
+  );
+
+  const bantEnabled = Boolean(agent?.collect_bant_info);
+  const requireCustomerInfo = Boolean(agent?.require_customer_info);
+
+  let baseRequiredFields = [];
+  if (bantEnabled) {
+    baseRequiredFields = [
+      "contact_name",
+      "email",
+      "phone",
+      "budget",
+      "authority",
+      "need",
+      "timeline",
+      "schedule_meeting_at",
+    ];
+  } else if (requireCustomerInfo) {
+    baseRequiredFields = ["contact_name", "email", "phone"];
+  }
+
+  const requiredCustomFields = (customFields || [])
+    .filter((field) => field?.is_required && field?.field_name)
+    .map((field) => String(field.field_name).trim())
+    .filter((fieldName) => fieldName.length > 0);
+
+  const requiredFields = Array.from(
+    new Set([...baseRequiredFields, ...requiredCustomFields]),
+  );
+
+  const hasAllRequiredFields = requiredFields.every((fieldName) =>
+    isValidCapturedValue(getFieldValue(fieldName)),
+  );
+
+  const isLeadSubmitted =
+    capturedData.crm_sync === "Synced to Database ✅" ||
+    capturedData.crm_sync === "Synced to Google Sheets ✅";
+
+  const handleSubmitRequirements = useCallback(async () => {
+    if (!agentId || isSubmittingLead) {
+      return;
+    }
+
+    setIsSubmittingLead(true);
+    setCapturedData((prev) =>
+      mergeCapturedData(prev, { crm_sync: "In Progress..." }),
+    );
+
+    try {
+      const session = await authService.getSession();
+      if (!session?.access_token) {
+        throw new Error("User session is not available");
+      }
+
+      const leadName = getFieldValue("contact_name") || "Anonymous";
+      const email = getFieldValue("email") || "";
+      const phone = getFieldValue("phone") || "";
+      const contactInfo =
+        getFieldValue("contact_info") ||
+        (email && phone
+          ? `${email} | ${phone}`
+          : email || phone || "No contact info provided");
+
+      const standardKeys = new Set([
+        "contact_name",
+        "email",
+        "phone",
+        "lead_name",
+        "contact_info",
+        "lead_score",
+        "budget",
+        "authority",
+        "need",
+        "timeline",
+        "schedule_meeting_at",
+        "crm_sync",
+        "crm_lead_name",
+        "follow_up",
+        "preferences",
+        "last_search",
+        "search_status",
+      ]);
+
+      const customFieldsPayload = Object.entries(capturedData).reduce(
+        (acc, [key, value]) => {
+          if (!standardKeys.has(key) && isValidCapturedValue(value)) {
+            acc[key] = value;
+          }
+          return acc;
+        },
+        {},
+      );
+
+      const response = await fetch(`/api/agents/${agentId}/leads`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          lead_name: leadName,
+          contact_info: contactInfo,
+          lead_score: getFieldValue("lead_score") || null,
+          budget: getFieldValue("budget") || null,
+          authority: getFieldValue("authority") || null,
+          need: getFieldValue("need") || null,
+          timeline: getFieldValue("timeline") || null,
+          schedule_meeting_at: getFieldValue("schedule_meeting_at") || null,
+          custom_fields: customFieldsPayload,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to store lead details");
+      }
+
+      setCapturedData((prev) =>
+        mergeCapturedData(prev, {
+          crm_sync: "Synced to Database ✅",
+          crm_lead_name: leadName,
+          contact_info: contactInfo,
+        }),
+      );
+    } catch (error) {
+      setCapturedData((prev) =>
+        mergeCapturedData(prev, {
+          crm_sync: `Lead sync failed ❌ (${error?.message || "Unknown error"})`,
+        }),
+      );
+    } finally {
+      setIsSubmittingLead(false);
+    }
+  }, [agentId, capturedData, getFieldValue, isSubmittingLead]);
 
   const handleEndSession = async () => {
     if (voiceSessionRef.current) {
@@ -248,21 +410,45 @@ export default function LaunchAgentPage() {
               <ArrowUpDown size={16} className="text-slate-400" />
             </div>
 
-            {Object.keys(capturedData).length > 0 ? (
-              <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
-                {Object.entries(capturedData).map(([key, value]) => (
-                  <div
-                    key={key}
-                    className="bg-slate-50 p-3 rounded-xl border border-slate-200"
-                  >
-                    <p className="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">
-                      {String(key).replaceAll("_", " ")}
-                    </p>
-                    <p className="text-base font-medium text-slate-900 break-words">
-                      {String(value)}
+            {visibleCapturedEntries.length > 0 ? (
+              <div className="space-y-3">
+                <div className="max-h-[420px] overflow-y-auto pr-1 space-y-3">
+                  {visibleCapturedEntries.map(([key, value]) => (
+                    <div
+                      key={key}
+                      className="bg-slate-50 p-3 rounded-xl border border-slate-200"
+                    >
+                      <p className="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">
+                        {String(key).replaceAll("_", " ")}
+                      </p>
+                      <p className="text-base font-medium text-slate-900 break-words">
+                        {String(value)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {hasAllRequiredFields && !isLeadSubmitted && (
+                  <div className="pt-4 border-t border-slate-200">
+                    <button
+                      type="button"
+                      onClick={handleSubmitRequirements}
+                      disabled={isSubmittingLead}
+                      className={`w-full py-3 px-4 rounded-xl font-bold text-sm transition-all duration-200 ${
+                        isSubmittingLead
+                          ? "bg-slate-400 text-white cursor-not-allowed"
+                          : "bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700"
+                      }`}
+                    >
+                      {isSubmittingLead
+                        ? "Submitting..."
+                        : "✓ Submit Requirements"}
+                    </button>
+                    <p className="text-[10px] text-slate-500 text-center mt-2">
+                      Submit captured details to store this lead.
                     </p>
                   </div>
-                ))}
+                )}
               </div>
             ) : (
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">

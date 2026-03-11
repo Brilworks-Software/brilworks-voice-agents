@@ -22,6 +22,17 @@ export default function LeadsPage() {
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [agents, setAgents] = useState([]);
 
+  const getAuthHeaders = async () => {
+    const session = await authService.getSession();
+    if (!session?.access_token) {
+      return null;
+    }
+
+    return {
+      Authorization: `Bearer ${session.access_token}`,
+    };
+  };
+
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -32,8 +43,16 @@ export default function LeadsPage() {
         }
         setUser(currentUser);
 
+        const authHeaders = await getAuthHeaders();
+        if (!authHeaders) {
+          router.push("/auth/login");
+          return;
+        }
+
         // Fetch lead statistics
-        const statsResponse = await fetch("/api/leads/stats");
+        const statsResponse = await fetch("/api/leads/stats", {
+          headers: authHeaders,
+        });
         if (statsResponse.ok) {
           const data = await statsResponse.json();
           setStats(data.stats);
@@ -41,7 +60,9 @@ export default function LeadsPage() {
         }
 
         // Fetch agents to allow filtering
-        const agentsResponse = await fetch("/api/agents");
+        const agentsResponse = await fetch("/api/agents", {
+          headers: authHeaders,
+        });
         if (agentsResponse.ok) {
           const agentsData = await agentsResponse.json();
           setAgents(agentsData.agents || []);
@@ -58,7 +79,15 @@ export default function LeadsPage() {
 
   const loadLeadsForAgent = async (agentId) => {
     try {
-      const response = await fetch(`/api/agents/${agentId}/leads`);
+      const authHeaders = await getAuthHeaders();
+      if (!authHeaders) {
+        router.push("/auth/login");
+        return;
+      }
+
+      const response = await fetch(`/api/agents/${agentId}/leads`, {
+        headers: authHeaders,
+      });
       if (response.ok) {
         const data = await response.json();
         setRecentLeads(data.leads || []);
@@ -183,10 +212,18 @@ export default function LeadsPage() {
             </h2>
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => {
+                onClick={async () => {
                   setSelectedAgent(null);
+                  const authHeaders = await getAuthHeaders();
+                  if (!authHeaders) {
+                    router.push("/auth/login");
+                    return;
+                  }
+
                   // Reload all leads
-                  fetch("/api/leads/stats")
+                  fetch("/api/leads/stats", {
+                    headers: authHeaders,
+                  })
                     .then((res) => res.json())
                     .then((data) => setRecentLeads(data.recentLeads || []));
                 }}

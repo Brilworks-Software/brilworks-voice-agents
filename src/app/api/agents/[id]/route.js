@@ -22,7 +22,7 @@ export async function PATCH(request, { params }) {
     }
 
     const body = await request.json();
-    const { id } = params;
+    const { id } = await params;
 
     const payload = {
       name: body.name,

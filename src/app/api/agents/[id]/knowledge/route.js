@@ -45,7 +45,7 @@ async function getAuthorizedContext(request, agentId) {
 
 export async function GET(request, { params }) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const context = await getAuthorizedContext(request, id);
     if (context.error) {
       return context.error;
@@ -103,7 +103,7 @@ export async function GET(request, { params }) {
 
 export async function POST(request, { params }) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const context = await getAuthorizedContext(request, id);
     if (context.error) {
       return context.error;

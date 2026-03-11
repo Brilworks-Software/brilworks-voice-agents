@@ -1,5 +1,41 @@
-import { createServerClient } from "@/lib/supabase/server";
+import { createServerClient, supabaseAdmin } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+
+async function getAuthenticatedContext(request) {
+  const supabase = await createServerClient();
+  const authorization = request.headers.get("authorization") || "";
+  const token = authorization.startsWith("Bearer ")
+    ? authorization.slice(7)
+    : "";
+
+  if (token) {
+    const {
+      data: { user },
+      error,
+    } = await supabaseAdmin.auth.getUser(token);
+
+    if (error || !user) {
+      return {
+        user: null,
+        error: error || new Error("Unauthorized"),
+        db: null,
+      };
+    }
+
+    return { user, error: null, db: supabaseAdmin };
+  }
+
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error || !user) {
+    return { user: null, error: error || new Error("Unauthorized"), db: null };
+  }
+
+  return { user, error: null, db: supabase };
+}
 
 /**
  * GET /api/leads/stats
@@ -7,20 +43,19 @@ import { NextResponse } from "next/server";
  */
 export async function GET(request) {
   try {
-    const supabase = await createServerClient();
-
     // Get current user
     const {
-      data: { user },
+      user,
       error: authError,
-    } = await supabase.auth.getUser();
+      db,
+    } = await getAuthenticatedContext(request);
 
-    if (authError || !user) {
+    if (authError || !user || !db) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Get all leads for user's agents
-    const { data: leads, error: leadsError } = await supabase
+    const { data: leads, error: leadsError } = await db
       .from("captured_leads")
       .select("*")
       .eq("user_id", user.id);

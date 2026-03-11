@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 export async function POST(request, { params }) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const authorization = request.headers.get("authorization") || "";
     const token = authorization.startsWith("Bearer ")
       ? authorization.slice(7)

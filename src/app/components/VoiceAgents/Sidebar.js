@@ -11,7 +11,14 @@ const Sidebar = ({
   const [editingKey, setEditingKey] = useState(null);
   const [editValue, setEditValue] = useState("");
 
-  const fields = Object.entries(data);
+  const isValidCapturedValue = (value) =>
+    value !== undefined &&
+    value !== null &&
+    (typeof value !== "string" || value.trim() !== "");
+
+  const fields = Object.entries(data).filter(([, value]) =>
+    isValidCapturedValue(value),
+  );
   const isRealEstate = industry.id === "real_estate";
 
   // Check if all required fields are captured (BANT + Name + Email + Schedule Meeting)
