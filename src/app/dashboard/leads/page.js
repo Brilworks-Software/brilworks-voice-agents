@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { authService } from "../../../services/authService";
 
+const PAGE_SIZE = 10;
+
 export default function LeadsPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -21,6 +23,12 @@ export default function LeadsPage() {
   const [recentLeads, setRecentLeads] = useState([]);
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [agents, setAgents] = useState([]);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    limit: PAGE_SIZE,
+    offset: 0,
+  });
+  const [currentPage, setCurrentPage] = useState(1);
 
   const getAuthHeaders = async () => {
     const session = await authService.getSession();
@@ -31,6 +39,65 @@ export default function LeadsPage() {
     return {
       Authorization: `Bearer ${session.access_token}`,
     };
+  };
+
+  const loadStatsLeads = async (authHeaders, page = 1) => {
+    const offset = (page - 1) * PAGE_SIZE;
+    const statsResponse = await fetch(
+      `/api/leads/stats?limit=${PAGE_SIZE}&offset=${offset}`,
+      {
+        headers: authHeaders,
+      },
+    );
+
+    if (!statsResponse.ok) {
+      return;
+    }
+
+    const data = await statsResponse.json();
+    setStats(data.stats);
+    setRecentLeads(data.recentLeads || []);
+    setPagination(
+      data.pagination || {
+        total: data.stats?.total || 0,
+        limit: PAGE_SIZE,
+        offset,
+      },
+    );
+    setCurrentPage(page);
+  };
+
+  const loadLeadsForAgent = async (agentId, page = 1) => {
+    try {
+      const authHeaders = await getAuthHeaders();
+      if (!authHeaders) {
+        router.push("/auth/login");
+        return;
+      }
+
+      const offset = (page - 1) * PAGE_SIZE;
+      const response = await fetch(
+        `/api/agents/${agentId}/leads?limit=${PAGE_SIZE}&offset=${offset}`,
+        {
+          headers: authHeaders,
+        },
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setRecentLeads(data.leads || []);
+        setSelectedAgent(agentId);
+        setPagination(
+          data.pagination || {
+            total: data.leads?.length || 0,
+            limit: PAGE_SIZE,
+            offset,
+          },
+        );
+        setCurrentPage(page);
+      }
+    } catch (error) {
+      console.error("Error loading agent leads:", error);
+    }
   };
 
   useEffect(() => {
@@ -49,15 +116,8 @@ export default function LeadsPage() {
           return;
         }
 
-        // Fetch lead statistics
-        const statsResponse = await fetch("/api/leads/stats", {
-          headers: authHeaders,
-        });
-        if (statsResponse.ok) {
-          const data = await statsResponse.json();
-          setStats(data.stats);
-          setRecentLeads(data.recentLeads || []);
-        }
+        // Fetch lead statistics and first page of leads
+        await loadStatsLeads(authHeaders, 1);
 
         // Fetch agents to allow filtering
         const agentsResponse = await fetch("/api/agents", {
@@ -77,25 +137,27 @@ export default function LeadsPage() {
     loadData();
   }, [router]);
 
-  const loadLeadsForAgent = async (agentId) => {
-    try {
-      const authHeaders = await getAuthHeaders();
-      if (!authHeaders) {
-        router.push("/auth/login");
-        return;
-      }
+  const totalPages = Math.max(
+    1,
+    Math.ceil((pagination.total || 0) / (pagination.limit || PAGE_SIZE)),
+  );
 
-      const response = await fetch(`/api/agents/${agentId}/leads`, {
-        headers: authHeaders,
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setRecentLeads(data.leads || []);
-        setSelectedAgent(agentId);
-      }
-    } catch (error) {
-      console.error("Error loading agent leads:", error);
+  const handlePageChange = async (nextPage) => {
+    if (nextPage < 1 || nextPage > totalPages || nextPage === currentPage) {
+      return;
     }
+
+    if (selectedAgent) {
+      await loadLeadsForAgent(selectedAgent, nextPage);
+      return;
+    }
+
+    const authHeaders = await getAuthHeaders();
+    if (!authHeaders) {
+      router.push("/auth/login");
+      return;
+    }
+    await loadStatsLeads(authHeaders, nextPage);
   };
 
   const getLeadScoreBadge = (score) => {
@@ -221,11 +283,7 @@ export default function LeadsPage() {
                   }
 
                   // Reload all leads
-                  fetch("/api/leads/stats", {
-                    headers: authHeaders,
-                  })
-                    .then((res) => res.json())
-                    .then((data) => setRecentLeads(data.recentLeads || []));
+                  await loadStatsLeads(authHeaders, 1);
                 }}
                 className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                   selectedAgent === null
@@ -287,6 +345,9 @@ export default function LeadsPage() {
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
                       Meeting
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                      Custom Fields
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
                       Captured At
@@ -353,6 +414,25 @@ export default function LeadsPage() {
                           </div>
                         )}
                       </td>
+                      <td className="px-6 py-4">
+                        <div className="text-xs space-y-1 text-slate-600 max-w-[260px]">
+                          {lead.custom_fields &&
+                          Object.keys(lead.custom_fields).length > 0 ? (
+                            Object.entries(lead.custom_fields).map(
+                              ([key, value]) => (
+                                <div key={key} className="truncate">
+                                  <span className="font-semibold">
+                                    {String(key).replaceAll("_", " ")}:
+                                  </span>{" "}
+                                  {String(value)}
+                                </div>
+                              ),
+                            )
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
                         {formatDate(lead.created_at)}
                       </td>
@@ -360,6 +440,40 @@ export default function LeadsPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {recentLeads.length > 0 && (
+            <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 bg-slate-50">
+              <p className="text-sm text-slate-600">
+                Showing {pagination.offset + 1} to{" "}
+                {Math.min(
+                  pagination.offset + recentLeads.length,
+                  pagination.total,
+                )}{" "}
+                of {pagination.total} leads
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage <= 1}
+                  className="px-3 py-2 text-sm rounded-lg border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <span className="text-sm text-slate-600 px-2">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage >= totalPages}
+                  className="px-3 py-2 text-sm rounded-lg border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           )}
         </div>
