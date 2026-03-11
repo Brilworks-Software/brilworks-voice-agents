@@ -43,6 +43,10 @@ async function getAuthenticatedContext(request) {
  */
 export async function GET(request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const limit = Number.parseInt(searchParams.get("limit") || "10");
+    const offset = Number.parseInt(searchParams.get("offset") || "0");
+
     // Get current user
     const {
       user,
@@ -54,37 +58,45 @@ export async function GET(request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get all leads for user's agents
-    const { data: leads, error: leadsError } = await db
+    // Get all leads for aggregate statistics
+    const { data: allLeads, error: leadsError } = await db
       .from("captured_leads")
-      .select("*")
+      .select("lead_score, email, phone, schedule_meeting_at, agent_id")
       .eq("user_id", user.id);
 
     if (leadsError) {
       throw leadsError;
     }
 
+    // Get paginated leads list for table rendering
+    const {
+      data: recentLeads,
+      error: recentLeadsError,
+      count,
+    } = await db
+      .from("captured_leads")
+      .select("*", { count: "exact" })
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (recentLeadsError) {
+      throw recentLeadsError;
+    }
+
     // Calculate statistics
     const stats = {
-      total: leads.length,
-      hot: leads.filter((l) => l.lead_score === "HOT").length,
-      warm: leads.filter((l) => l.lead_score === "WARM").length,
-      cold: leads.filter((l) => l.lead_score === "COLD").length,
-      withEmail: leads.filter((l) => l.email).length,
-      withPhone: leads.filter((l) => l.phone).length,
-      withMeeting: leads.filter((l) => l.schedule_meeting_at).length,
+      total: allLeads.length,
+      hot: allLeads.filter((l) => l.lead_score === "HOT").length,
+      warm: allLeads.filter((l) => l.lead_score === "WARM").length,
+      cold: allLeads.filter((l) => l.lead_score === "COLD").length,
+      withEmail: allLeads.filter((l) => l.email).length,
+      withPhone: allLeads.filter((l) => l.phone).length,
+      withMeeting: allLeads.filter((l) => l.schedule_meeting_at).length,
     };
 
-    // Get recent leads
-    const recentLeads = leads
-      .sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      )
-      .slice(0, 10);
-
     // Get leads by agent
-    const leadsByAgent = leads.reduce((acc, lead) => {
+    const leadsByAgent = allLeads.reduce((acc, lead) => {
       const agentId = lead.agent_id;
       if (!acc[agentId]) {
         acc[agentId] = {
@@ -103,8 +115,13 @@ export async function GET(request) {
 
     return NextResponse.json({
       stats,
-      recentLeads,
+      recentLeads: recentLeads || [],
       leadsByAgent,
+      pagination: {
+        total: count || 0,
+        limit,
+        offset,
+      },
     });
   } catch (error) {
     console.error("Error fetching lead statistics:", error);
