@@ -245,34 +245,36 @@ export default function CreateAgentPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-5xl mx-auto space-y-6">
       {/* Header */}
-      <div className="mb-8">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm ring-1 ring-slate-100 p-6 md:p-7">
         <Link
           href="/dashboard"
-          className="inline-flex items-center space-x-2 text-blue-600 hover:text-blue-700 mb-4"
+          className="inline-flex items-center space-x-2 text-blue-600 hover:text-blue-700 mb-4 text-sm font-medium"
         >
           <ChevronLeft size={20} />
           <span>Back to Dashboard</span>
         </Link>
-        <h1 className="text-4xl font-bold text-slate-900">Create New Agent</h1>
+        <h1 className="text-xl md:text-xl font-bold text-slate-900">
+          Create New Agent
+        </h1>
         <p className="text-slate-600 mt-2">
           Configure your custom voice agent with your own settings and behaviors
         </p>
       </div>
 
       {/* Form */}
-      <div className="bg-white rounded-2xl p-8 border border-slate-200">
+      <div className="bg-white rounded-2xl p-6 md:p-8 border border-slate-200 shadow-sm ring-1 ring-slate-100">
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-8">
+        <form onSubmit={handleSubmit} className="space-y-9">
           {/* Agent Identity Section */}
           <div className="border-b border-slate-200 pb-8">
-            <h2 className="text-2xl font-bold text-slate-900 mb-6">
+            <h2 className="text-xl font-bold text-slate-900 mb-6">
               Agent Identity
             </h2>
 
@@ -351,7 +353,7 @@ export default function CreateAgentPage() {
 
           {/* System Prompt Section */}
           <div className="border-b border-slate-200 pb-8">
-            <h2 className="text-2xl font-bold text-slate-900 mb-6">
+            <h2 className="text-xl font-bold text-slate-900 mb-6">
               Conversation Behavior
             </h2>
 
@@ -375,7 +377,7 @@ export default function CreateAgentPage() {
 
           {/* Customer Information Toggle */}
           <div className="border-b border-slate-200 pb-8">
-            <h2 className="text-2xl font-bold text-slate-900 mb-6">
+            <h2 className="text-xl font-bold text-slate-900 mb-6">
               Customer Information Collection
             </h2>
 
@@ -429,7 +431,7 @@ export default function CreateAgentPage() {
           <div className="border-b border-slate-200 pb-8">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-2xl font-bold text-slate-900">
+                <h2 className="text-xl font-bold text-slate-900">
                   Custom Fields
                 </h2>
                 <p className="text-sm text-slate-600 mt-1">
@@ -566,7 +568,7 @@ export default function CreateAgentPage() {
 
           {/* Knowledge Base Section */}
           <div className="border-b border-slate-200 pb-8">
-            <h2 className="text-2xl font-bold text-slate-900 mb-6">
+            <h2 className="text-xl font-bold text-slate-900 mb-6">
               Knowledge Base
             </h2>
 

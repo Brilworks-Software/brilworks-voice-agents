@@ -44,9 +44,9 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm ring-1 ring-slate-100 p-8">
           <div className="mb-8 flex justify-center">
             <Image
               src="/logo-black.svg"
@@ -56,7 +56,7 @@ export default function SignupPage() {
             />
           </div>
 
-          <h1 className="text-3xl font-bold text-slate-900 mb-2 text-center">
+          <h1 className="text-xl font-bold text-slate-900 mb-2 text-center">
             Create Account
           </h1>
           <p className="text-slate-600 text-center mb-8">

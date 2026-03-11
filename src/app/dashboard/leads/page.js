@@ -22,6 +22,17 @@ export default function LeadsPage() {
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [agents, setAgents] = useState([]);
 
+  const getAuthHeaders = async () => {
+    const session = await authService.getSession();
+    if (!session?.access_token) {
+      return null;
+    }
+
+    return {
+      Authorization: `Bearer ${session.access_token}`,
+    };
+  };
+
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -32,8 +43,16 @@ export default function LeadsPage() {
         }
         setUser(currentUser);
 
+        const authHeaders = await getAuthHeaders();
+        if (!authHeaders) {
+          router.push("/auth/login");
+          return;
+        }
+
         // Fetch lead statistics
-        const statsResponse = await fetch("/api/leads/stats");
+        const statsResponse = await fetch("/api/leads/stats", {
+          headers: authHeaders,
+        });
         if (statsResponse.ok) {
           const data = await statsResponse.json();
           setStats(data.stats);
@@ -41,7 +60,9 @@ export default function LeadsPage() {
         }
 
         // Fetch agents to allow filtering
-        const agentsResponse = await fetch("/api/agents");
+        const agentsResponse = await fetch("/api/agents", {
+          headers: authHeaders,
+        });
         if (agentsResponse.ok) {
           const agentsData = await agentsResponse.json();
           setAgents(agentsData.agents || []);
@@ -58,7 +79,15 @@ export default function LeadsPage() {
 
   const loadLeadsForAgent = async (agentId) => {
     try {
-      const response = await fetch(`/api/agents/${agentId}/leads`);
+      const authHeaders = await getAuthHeaders();
+      if (!authHeaders) {
+        router.push("/auth/login");
+        return;
+      }
+
+      const response = await fetch(`/api/agents/${agentId}/leads`, {
+        headers: authHeaders,
+      });
       if (response.ok) {
         const data = await response.json();
         setRecentLeads(data.leads || []);
@@ -90,7 +119,7 @@ export default function LeadsPage() {
 
   if (isLoading || !user) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+      <div className="flex items-center justify-center py-24">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-slate-600">Loading leads...</p>
@@ -100,40 +129,30 @@ export default function LeadsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4 shadow-sm">
-        <div className="max-w-7xl mx-auto">
-          <Link
-            href="/dashboard"
-            className="flex items-center space-x-2 text-slate-600 hover:text-slate-900 mb-3 w-fit"
-          >
-            <ChevronLeft size={20} />
-            <span>Back to Dashboard</span>
-          </Link>
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900">
-                Lead Management
-              </h1>
-              <p className="text-slate-600 mt-1">
-                Track and manage all captured leads from your voice agents
-              </p>
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className="space-y-6">
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-7 shadow-sm ring-1 ring-slate-100">
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center space-x-2 text-slate-600 hover:text-slate-900 mb-3 w-fit text-sm font-medium"
+        >
+          <ChevronLeft size={18} />
+          <span>Back to Dashboard</span>
+        </Link>
+        <h1 className="text-xl font-bold text-slate-900">Lead Management</h1>
+        <p className="text-slate-600 mt-1">
+          Track and manage all captured leads from your voice agents
+        </p>
+      </div>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <div className="space-y-6">
         {/* Statistics Cards */}
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
+            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm ring-1 ring-slate-100">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-600 mb-1">Total Leads</p>
-                  <p className="text-3xl font-bold text-slate-900">
+                  <p className="text-xl font-bold text-slate-900">
                     {stats.total}
                   </p>
                 </div>
@@ -143,11 +162,11 @@ export default function LeadsPage() {
               </div>
             </div>
 
-            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
+            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm ring-1 ring-slate-100">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-600 mb-1">Hot Leads</p>
-                  <p className="text-3xl font-bold text-red-600">{stats.hot}</p>
+                  <p className="text-xl font-bold text-red-600">{stats.hot}</p>
                 </div>
                 <div className="bg-red-100 rounded-full p-3">
                   <TrendingUp className="w-6 h-6 text-red-600" />
@@ -155,11 +174,11 @@ export default function LeadsPage() {
               </div>
             </div>
 
-            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
+            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm ring-1 ring-slate-100">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-600 mb-1">Warm Leads</p>
-                  <p className="text-3xl font-bold text-orange-600">
+                  <p className="text-xl font-bold text-orange-600">
                     {stats.warm}
                   </p>
                 </div>
@@ -169,11 +188,11 @@ export default function LeadsPage() {
               </div>
             </div>
 
-            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
+            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm ring-1 ring-slate-100">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-600 mb-1">Cold Leads</p>
-                  <p className="text-3xl font-bold text-blue-600">
+                  <p className="text-xl font-bold text-blue-600">
                     {stats.cold}
                   </p>
                 </div>
@@ -187,16 +206,24 @@ export default function LeadsPage() {
 
         {/* Agent Filter */}
         {agents.length > 0 && (
-          <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm mb-6">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">
+          <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm ring-1 ring-slate-100 mb-6">
+            <h2 className="text-md font-semibold text-slate-900 mb-4">
               Filter by Agent
             </h2>
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => {
+                onClick={async () => {
                   setSelectedAgent(null);
+                  const authHeaders = await getAuthHeaders();
+                  if (!authHeaders) {
+                    router.push("/auth/login");
+                    return;
+                  }
+
                   // Reload all leads
-                  fetch("/api/leads/stats")
+                  fetch("/api/leads/stats", {
+                    headers: authHeaders,
+                  })
                     .then((res) => res.json())
                     .then((data) => setRecentLeads(data.recentLeads || []));
                 }}
@@ -226,9 +253,9 @@ export default function LeadsPage() {
         )}
 
         {/* Leads Table */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm ring-1 ring-slate-100 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200">
-            <h2 className="text-xl font-semibold text-slate-900">
+            <h2 className="text-lg font-semibold text-slate-900">
               Recent Leads
             </h2>
           </div>
@@ -336,7 +363,7 @@ export default function LeadsPage() {
             </div>
           )}
         </div>
-      </main>
+      </div>
     </div>
   );
 }

@@ -76,11 +76,11 @@ export default function DashboardPage() {
 
   if (isLoading) {
     renderContent = (
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {cardSkeletons.map((skeleton) => (
           <div
             key={skeleton}
-            className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm animate-pulse"
+            className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm ring-1 ring-slate-100 animate-pulse"
           >
             <div className="h-6 w-40 bg-slate-200 rounded mb-4" />
             <div className="flex gap-2 mb-4">
@@ -99,11 +99,11 @@ export default function DashboardPage() {
     );
   } else if (agents.length === 0) {
     renderContent = (
-      <div className="bg-white rounded-2xl p-10 md:p-12 text-center border-2 border-dashed border-slate-300 shadow-sm">
+      <div className="bg-white rounded-2xl p-10 md:p-12 text-center border-2 border-dashed border-slate-300 shadow-sm ring-1 ring-slate-100">
         <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
           <Sparkles size={22} />
         </div>
-        <div className="text-slate-700 mb-3 text-lg font-medium">
+        <div className="text-slate-700 mb-3 text-md font-medium">
           No agents yet. Create your first custom voice agent!
         </div>
         <p className="text-sm text-slate-500 mb-6">
@@ -120,14 +120,14 @@ export default function DashboardPage() {
     );
   } else {
     renderContent = (
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {agents.map((agent) => (
           <div
             key={agent.id}
-            className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm hover:shadow-lg transition-shadow"
+            className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all flex flex-col h-full"
           >
             <div className="mb-4">
-              <h3 className="text-xl font-bold text-slate-900">{agent.name}</h3>
+              <h3 className="text-md font-bold text-slate-900">{agent.name}</h3>
               <div className="flex items-center space-x-2 mt-2">
                 <span className="inline-block bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm font-medium border border-blue-200">
                   {agent.industry}
@@ -142,14 +142,14 @@ export default function DashboardPage() {
               Created {formatDate(agent.created_at)}
             </p>
 
-            <div className="bg-slate-50 rounded-xl p-3 mb-4 border border-slate-200">
-              <p className="text-xs font-medium text-slate-600 mb-2">
+            <div className="bg-slate-50 rounded-xl p-3 mb-4 border border-slate-100">
+              <p className="text-xs font-medium text-slate-500 mb-2">
                 Voice Persona
               </p>
-              <p className="text-sm text-slate-700">{agent.voice_persona}</p>
+              <p className="text-sm text-slate-800">{agent.voice_persona}</p>
             </div>
 
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 mt-auto">
               <Link
                 href={`/dashboard/agent/${agent.id}`}
                 className="flex-1 flex items-center justify-center space-x-2 bg-blue-600 text-white py-2.5 rounded-xl hover:bg-blue-700 transition-colors text-sm font-medium"
@@ -191,15 +191,14 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-slate-900">
-            Your Agents
-          </h1>
-          <p className="text-slate-600 mt-2">Manage your custom voice agents</p>
-        </div>
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-7 shadow-sm ring-1 ring-slate-100">
+        <h1 className="text-xl font-bold text-slate-800">Your Agents</h1>
+        <p className="text-slate-500 mt-2">Manage your custom voice agents</p>
+      </div>
+
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-end gap-4">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <Link
             href="/dashboard/leads"

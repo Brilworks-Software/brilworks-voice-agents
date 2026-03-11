@@ -41,19 +41,27 @@ const iconMap = {
   UtensilsCrossed,
 };
 
+const isValidCapturedValue = (value) =>
+  value !== undefined &&
+  value !== null &&
+  (typeof value !== "string" || value.trim() !== "");
+
+const mergeCapturedData = (previousData, incomingData) => {
+  const updatedData = { ...previousData };
+  Object.entries(incomingData || {}).forEach(([key, value]) => {
+    if (isValidCapturedValue(value)) {
+      updatedData[key] = value;
+    } else {
+      delete updatedData[key];
+    }
+  });
+  return updatedData;
+};
+
 const VoiceAgents = () => {
   const [view, setView] = useState("home");
   const [selectedIndustry, setSelectedIndustry] = useState(null);
-  const [selectedLanguage, setSelectedLanguage] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("brilworks_lang");
-      if (saved) {
-        const found = LANGUAGES.find((l) => l.code === saved);
-        if (found) return found;
-      }
-    }
-    return LANGUAGES[0]; // Auto-detect
-  });
+  const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0]);
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [transcriptionHistory, setTranscriptionHistory] = useState([]);
   const [capturedData, setCapturedData] = useState({});
@@ -61,11 +69,21 @@ const VoiceAgents = () => {
 
   const voiceSessionRef = useRef(null);
 
+  // Hydrate language selection from localStorage after mount (SSR-safe)
+  useEffect(() => {
+    const saved = localStorage.getItem("brilworks_lang");
+    if (!saved) return;
+    const found = LANGUAGES.find(
+      (languageOption) => languageOption.code === saved,
+    );
+    if (found) {
+      setSelectedLanguage(found);
+    }
+  }, []);
+
   // Persistence
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("brilworks_lang", selectedLanguage.code);
-    }
+    localStorage.setItem("brilworks_lang", selectedLanguage.code);
   }, [selectedLanguage]);
 
   const handleSelectIndustry = (industry) => {
@@ -87,14 +105,11 @@ const VoiceAgents = () => {
 
   const handleCapturedData = useCallback((data) => {
     console.log("Data is captured for the user", data);
-    setCapturedData((prev) => {
-      const updated = { ...prev, ...data };
-      return updated;
-    });
+    setCapturedData((prev) => mergeCapturedData(prev, data));
   }, []);
 
   const handleUpdateData = (key, value) => {
-    setCapturedData((prev) => ({ ...prev, [key]: value }));
+    setCapturedData((prev) => mergeCapturedData(prev, { [key]: value }));
     if (isSessionActive && voiceSessionRef.current) {
       voiceSessionRef.current.sendMessage(
         `[SYSTEM UPDATE: User has manually updated their ${key} to "${value}". Please acknowledge and use this new value moving forward.]`,
@@ -215,11 +230,11 @@ const VoiceAgents = () => {
       />
 
       <div className="flex flex-1 overflow-hidden">
-        <main className="flex-1 flex flex-col overflow-y-auto p-4 md:p-8">
+        <main className="flex-1 flex flex-col overflow-y-auto p-4 sm:p-6 md:p-8">
           {view === "home" && (
             <div className="max-w-6xl mx-auto w-full">
-              <div className="mb-8">
-                <h1 className="text-3xl font-bold text-slate-800">
+              <div className="mb-8 bg-white border border-slate-200 rounded-2xl p-6 md:p-7 shadow-sm ring-1 ring-slate-100">
+                <h1 className="text-xl font-bold text-slate-800">
                   Choose a Brilworks Agent
                 </h1>
                 <p className="text-slate-500 mt-2">
@@ -264,7 +279,7 @@ const VoiceAgents = () => {
 
               <div className="flex flex-col md:flex-row gap-6 md:flex-1 md:min-h-0 md:overflow-hidden">
                 <div className="md:flex-1 flex flex-col space-y-4 md:min-h-0">
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:flex-1 flex flex-col md:min-h-0 md:overflow-hidden">
+                  <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-100 border border-slate-200 p-6 md:flex-1 flex flex-col md:min-h-0 md:overflow-hidden">
                     <div className="flex items-center justify-between mb-6">
                       <div className="flex items-center space-x-3">
                         <div
@@ -282,7 +297,7 @@ const VoiceAgents = () => {
                           })()}
                         </div>
                         <div>
-                          <h2 className="text-xl font-bold text-slate-800">
+                          <h2 className="text-lg font-bold text-slate-800">
                             {selectedIndustry.name}
                           </h2>
                           <p className="text-sm text-slate-500">

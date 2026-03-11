@@ -1,13 +1,4 @@
 "use client";
-/**
- * CustomVoiceSession is deprecated.
- * All functionality (including customFields support) has been merged into VoiceSession.
- * This file is a thin re-export so any lingering imports don't break.
- */
-import VoiceSession from "./VoiceSession";
-export default VoiceSession;
-
-/* ---- dead code below — kept only to avoid deletion side-effects ---- */
 import React, {
   useEffect,
   useRef,
@@ -19,6 +10,7 @@ import React, {
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { encode, decode, decodeAudioData } from "./services/audioUtils";
 import { getBrilworksBase } from "./constants";
+import { authService } from "@/services/authService";
 
 const CustomVoiceSession = forwardRef(
   (
@@ -31,10 +23,25 @@ const CustomVoiceSession = forwardRef(
       onMessage,
       onDataCaptured,
       capturedData = {},
+      // customFields is optional — existing 15 agents don't pass it and get default []
       customFields = [],
+      enableKnowledgeBase = false,
     },
     ref,
   ) => {
+    console.log({
+      industry,
+      language,
+      isActive,
+      onStart,
+      onStop,
+      onMessage,
+      onDataCaptured,
+      capturedData,
+      // customFields is optional — existing 15 agents don't pass it and get default []
+      customFields,
+      enableKnowledgeBase,
+    });
     const [isInitializing, setIsInitializing] = useState(false);
     const audioContextRef = useRef(null);
     const outputAudioContextRef = useRef(null);
@@ -52,23 +59,43 @@ const CustomVoiceSession = forwardRef(
     const isSessionActiveRef = useRef(false);
     const capturedDataRef = useRef(capturedData);
     const reconnectAttemptsRef = useRef(0);
+    // Synchronous ref guards — prevent re-entry during render cycles triggered
+    // by onStop(). React state (isInitializing) is async and cannot reliably
+    // block re-entry within the same render pass.
     const isInitializingRef = useRef(false);
     const shouldStopRef = useRef(false);
-    const sessionOpenedRef = useRef(false); // true if onopen actually fired for this session
+    const sessionOpenedRef = useRef(false); // true once onopen actually fires for this session
     const MAX_RECONNECT_ATTEMPTS = 20;
     const lastStartAttemptRef = useRef(0);
-    const MIN_SESSION_LIFETIME_MS = 500; // Minimum 500ms before allowing restart
+    const MIN_SESSION_LIFETIME_MS = 500;
 
-    const baseLeadFields = [
-      "contact_name",
-      "email",
-      "phone",
-      "budget",
-      "authority",
-      "need",
-      "timeline",
-      "schedule_meeting_at",
-    ];
+    // ─── Dynamic custom fields ────────────────────────────────────────────────
+    // For the existing 15 voice agents customFields=[] so everything falls back
+    // to the standard BANT base fields — no behaviour change for them.
+
+    // bantEnabled: true for all non-custom agents (existing behaviour);
+    // for custom agents it follows the collect_bant_info toggle.
+    const bantEnabled =
+      !industry.isCustomAgent || Boolean(industry.collectBantInfo);
+
+    // requireCustomerInfo: determines if customer fields (contact_name, email, phone) should be collected
+    const requireCustomerInfo =
+      !industry.isCustomAgent || Boolean(industry.require_customer_info);
+
+    const baseLeadFields = bantEnabled
+      ? [
+          "contact_name",
+          "email",
+          "phone",
+          "budget",
+          "authority",
+          "need",
+          "timeline",
+          "schedule_meeting_at",
+        ]
+      : requireCustomerInfo
+        ? ["contact_name", "email", "phone"]
+        : [];
 
     const normalizedCustomFields = (customFields || [])
       .filter((field) => field?.field_name)
@@ -79,10 +106,10 @@ const CustomVoiceSession = forwardRef(
       }))
       .filter((field) => field.name.length > 0);
 
-    const dynamicFieldNames = normalizedCustomFields.map((field) => field.name);
+    const dynamicFieldNames = normalizedCustomFields.map((f) => f.name);
     const requiredDynamicFieldNames = normalizedCustomFields
-      .filter((field) => field.required)
-      .map((field) => field.name);
+      .filter((f) => f.required)
+      .map((f) => f.name);
 
     const captureFieldNames = Array.from(
       new Set([...baseLeadFields, ...dynamicFieldNames]),
@@ -92,11 +119,9 @@ const CustomVoiceSession = forwardRef(
       new Set([
         "lead_name",
         "contact_info",
-        "budget",
-        "authority",
-        "need",
-        "timeline",
-        "schedule_meeting_at",
+        ...(bantEnabled
+          ? ["budget", "authority", "need", "timeline", "schedule_meeting_at"]
+          : []),
         ...requiredDynamicFieldNames,
       ]),
     );
@@ -110,6 +135,7 @@ const CustomVoiceSession = forwardRef(
       };
       return acc;
     }, {});
+    // ─────────────────────────────────────────────────────────────────────────
 
     useImperativeHandle(ref, () => ({
       sendMessage: (msg) => {
@@ -141,19 +167,20 @@ const CustomVoiceSession = forwardRef(
       },
     }));
 
+    // ─── Tool declarations ──────────────────────────────────────────────────
+    // NOTE: Do NOT use 'enum' on any parameter — the Gemini Live native audio
+    // API rejects function declarations that contain 'enum', closing the WebSocket
+    // with code 1000 immediately after setup. Encode allowed values in the
+    // description instead.
     const captureDataFunction = {
       name: "capture_information",
       parameters: {
         type: Type.OBJECT,
-        description: `Capture user information immediately during the conversation. Allowed field names: ${captureFieldNames.join(", ")}. Required custom fields: ${requiredDynamicFieldNames.length > 0 ? requiredDynamicFieldNames.join(", ") : "none"}.`,
+        description: `Capture specific user information identified during the conversation. Allowed field names: ${captureFieldNames.join(", ")}. Required custom fields: ${requiredDynamicFieldNames.length > 0 ? requiredDynamicFieldNames.join(", ") : "none"}. Call this IMMEDIATELY when user mentions any of these details.`,
         properties: {
           field_name: {
             type: Type.STRING,
-            // NOTE: Do NOT use 'enum' here — the Gemini Live native audio API rejects
-            // function declarations that contain 'enum' in their schema, closing the
-            // WebSocket with code 1000 immediately after setup. Keep this as plain STRING
-            // and encode the allowed values in the description instead.
-            description: `The attribute key to capture. Must be one of: ${captureFieldNames.join(", ")}.`,
+            description: `The name of the attribute. Must be one of: ${captureFieldNames.join(", ")}.`,
           },
           value: {
             type: Type.STRING,
@@ -165,11 +192,13 @@ const CustomVoiceSession = forwardRef(
       },
     };
 
+    console.log(captureDataFunction);
+
     const logToCrmFunction = {
       name: "log_to_crm",
       parameters: {
         type: Type.OBJECT,
-        description: `Synchronize lead data with Brilworks CRM (Google Sheets) only after all required fields are available, including required custom fields: ${requiredDynamicFieldNames.length > 0 ? requiredDynamicFieldNames.join(", ") : "none"}.`,
+        description: `Synchronize lead data with Brilworks CRM (Google Sheets) only after all required fields are available, including required custom fields: ${requiredDynamicFieldNames.length > 0 ? requiredDynamicFieldNames.join(", ") : "none"}. Determine lead_score: HOT (ready to buy, budget confirmed, timeline < 1 month, has authority), WARM (interested, has budget, timeline 1-3 months), or COLD (just browsing, no clear budget/timeline/authority).`,
         properties: {
           lead_name: {
             type: Type.STRING,
@@ -186,31 +215,36 @@ const CustomVoiceSession = forwardRef(
             description:
               'Lead qualification based on captured BANT data (Budget, Authority, Need, Timeline): "HOT", "WARM", or "COLD".',
           },
-          budget: {
-            type: Type.STRING,
-            description:
-              'Budget amount from "budget" field captured earlier. REQUIRED for BANT qualification.',
-          },
-          authority: {
-            type: Type.STRING,
-            description:
-              'Decision-making authority from "authority" field captured earlier. REQUIRED for BANT qualification.',
-          },
-          need: {
-            type: Type.STRING,
-            description:
-              'Specific needs/requirements from "need" field captured earlier. REQUIRED for BANT qualification.',
-          },
-          timeline: {
-            type: Type.STRING,
-            description:
-              'Purchase timeline from "timeline" field captured earlier. REQUIRED for BANT qualification.',
-          },
-          schedule_meeting_at: {
-            type: Type.STRING,
-            description:
-              'Scheduled meeting date/time from "schedule_meeting_at" field. REQUIRED: Must be provided by the user.',
-          },
+          ...(bantEnabled
+            ? {
+                budget: {
+                  type: Type.STRING,
+                  description:
+                    'Budget amount from "budget" field captured earlier. REQUIRED for BANT qualification.',
+                },
+                authority: {
+                  type: Type.STRING,
+                  description:
+                    'Decision-making authority from "authority" field captured earlier. REQUIRED for BANT qualification.',
+                },
+                need: {
+                  type: Type.STRING,
+                  description:
+                    'Specific needs/requirements from "need" field captured earlier. REQUIRED for BANT qualification.',
+                },
+                timeline: {
+                  type: Type.STRING,
+                  description:
+                    'Purchase timeline from "timeline" field captured earlier. REQUIRED for BANT qualification.',
+                },
+                schedule_meeting_at: {
+                  type: Type.STRING,
+                  description:
+                    'Scheduled meeting date/time from "schedule_meeting_at" field. REQUIRED: Must be provided by the user.',
+                },
+              }
+            : {}),
+          // Dynamically injected custom fields (empty for existing 15 agents)
           ...dynamicLogProperties,
         },
         required: requiredForCrmSubmission,
@@ -231,26 +265,43 @@ const CustomVoiceSession = forwardRef(
       },
     };
 
+    const searchKnowledgeBaseFunction = {
+      name: "search_knowledge_base",
+      parameters: {
+        type: Type.OBJECT,
+        description:
+          "Search the agent knowledge base for factual answers from uploaded PDF documents.",
+        properties: {
+          query: {
+            type: Type.STRING,
+            description:
+              "The user question or search phrase to look up in uploaded knowledge documents.",
+          },
+        },
+        required: ["query"],
+      },
+    };
+
     const startLiveSession = async () => {
       try {
-        // Guard against re-entry during render cycles
+        // Synchronous ref guards — prevent re-entry during render cycles
         if (isInitializingRef.current || shouldStopRef.current) return;
         isInitializingRef.current = true;
-        sessionOpenedRef.current = false; // reset for this new attempt
+        sessionOpenedRef.current = false;
         setIsInitializing(true);
         shouldStopRef.current = false;
         lastStartAttemptRef.current = Date.now();
+
         const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
         if (!apiKey) {
           console.error(
             "Gemini API key not found. Please set NEXT_PUBLIC_GEMINI_API_KEY in your environment variables.",
           );
+          isInitializingRef.current = false;
           setIsInitializing(false);
           onStop();
           return;
         }
-
-        console.log("🟢 Starting new Gemini Live session...");
 
         const ai = new GoogleGenAI({
           apiKey,
@@ -290,10 +341,46 @@ const CustomVoiceSession = forwardRef(
                 .join(", ")
             : "None yet";
 
-        const fullSystemInstruction = industry.usesCrmTools
-          ? `${baseInstruction}\n\nCurrent lead data: ${memoryText}\n\n${industryRules}\n\nIMPORTANT INSTRUCTIONS:\n1. Use capture_information immediately whenever the user provides data.\n2. Allowed capture fields: ${captureFieldNames.join(", ")}.\n3. Required default fields before CRM sync: contact_name, email, budget, authority, need, timeline, schedule_meeting_at.\n4. Required custom fields before CRM sync: ${requiredDynamicFieldNames.length > 0 ? requiredDynamicFieldNames.join(", ") : "none"}.\n5. If any required field is missing, ask for only the missing fields and do not call log_to_crm yet.`
-          : `${baseInstruction}\n\n${industryRules}`;
+        const knowledgeToolEnabled =
+          enableKnowledgeBase && industry.isCustomAgent && Boolean(industry.id);
+        const knowledgeToolInstruction = knowledgeToolEnabled
+          ? "\n\nKNOWLEDGE BASE INSTRUCTIONS:\n- You can call search_knowledge_base to retrieve facts from uploaded documents.\n- Call it whenever the user asks about product/service details, policies, pricing, process, or any factual info.\n- After receiving tool results, answer using those facts and keep the response concise."
+          : "";
+        const sessionGreetingInstruction =
+          "\n\nSESSION START INSTRUCTION:\n- As soon as the session starts, immediately greet the user with a warm, professional opening message and introduce yourself before asking the first question.\n- In that first greeting, clearly state what this agent is and what kinds of tasks or questions it can help with.\n- Do not wait for the user to speak first.";
 
+        // Determine if tools for lead qualification should be included
+        const shouldIncludeQualificationTools =
+          bantEnabled ||
+          requireCustomerInfo ||
+          normalizedCustomFields.length > 0;
+
+        const leadQualificationGuidance = shouldIncludeQualificationTools
+          ? "\n\nLEAD QUALIFICATION GUIDANCE:\n- If the user asks a question, answer it clearly and helpfully first.\n- If the user has no question, proactively collect information required for lead capture.\n- While answering, keep moving the conversation toward capturing missing required lead details.\n- Keep responses concise, relevant, and focused on qualification goals."
+          : "";
+
+        // For custom agents: use the user's system prompt directly — no sub-prompts
+        // added (no getBrilworksBase, no memory text, no extra instructions), except optional KB and qualification instructions.
+        // For existing non-custom agents: keep the original behaviour.
+        const fullSystemInstruction = industry.isCustomAgent
+          ? `${industryRules} ${leadQualificationGuidance} ${knowledgeToolInstruction} ${sessionGreetingInstruction}`
+          : shouldIncludeQualificationTools
+            ? `${baseInstruction}\n\nCurrent lead data: ${memoryText}\n\n${leadQualificationGuidance}${industryRules}\n\nIMPORTANT INSTRUCTIONS:\n1. Use capture_information immediately whenever the user provides data.\n2. Allowed capture fields: ${captureFieldNames.join(", ")}.\n3. Required custom fields before CRM sync: ${requiredDynamicFieldNames.length > 0 ? requiredDynamicFieldNames.join(", ") : "none"}.\n4. If any required field is missing, ask for only the missing fields and do not call log_to_crm yet.${sessionGreetingInstruction}`
+            : `${baseInstruction}\n\n${industryRules}${sessionGreetingInstruction}`;
+
+        const functionDeclarations = [];
+        if (shouldIncludeQualificationTools) {
+          functionDeclarations.push(
+            captureDataFunction,
+            logToCrmFunction,
+            searchPropertiesFunction,
+          );
+        }
+        if (knowledgeToolEnabled) {
+          functionDeclarations.push(searchKnowledgeBaseFunction);
+        }
+
+        console.log(functionDeclarations, fullSystemInstruction);
         // Use industry-specific liveConnectConfig if available, otherwise use default
         const liveConnectConfig = industry.liveConnectConfig || {
           model: "gemini-2.5-flash-native-audio-preview-12-2025",
@@ -305,22 +392,33 @@ const CustomVoiceSession = forwardRef(
           inputAudioTranscription: {},
         };
 
+        // ── Debug: log the full session config so we can spot API-rejection causes ──
+        console.log("🟡 [VoiceSession] Starting live connect:", {
+          model: liveConnectConfig.model,
+          industryId: industry.id,
+          industryName: industry.name,
+          usesCrmTools: industry.usesCrmTools,
+          customFieldsCount: (customFields || []).length,
+          normalizedCustomFieldsCount: normalizedCustomFields.length,
+          captureFieldNames,
+          requiredForCrmSubmission,
+          responseModalities: liveConnectConfig.responseModalities,
+          speechConfig: liveConnectConfig.speechConfig,
+          toolsIncluded: industry.usesCrmTools,
+          captureDataFunctionDef: industry.usesCrmTools
+            ? captureDataFunction
+            : null,
+        });
+
         const sessionPromise = ai.live.connect({
           model: liveConnectConfig.model,
           callbacks: {
             onopen: () => {
-              // NOTE: Do NOT clear isInitializingRef here.
-              // onStart() triggers parent to set isActive=true (a new value), which fires
-              // useEffect([isActive]). At that point sessionRef.current is still null because
-              // the 'await sessionPromise' below hasn't resolved yet. If isInitializingRef
-              // were false here, all guards would pass and a second session would spawn.
-              // isInitializingRef is cleared only AFTER sessionRef.current is set below.
-
-              // Mark that this session genuinely opened — onclose must not treat it as a
-              // failed-init even if duration < MIN_SESSION_LIFETIME_MS.
+              // Do NOT clear isInitializingRef here.
+              // onStart() triggers the parent to flip isActive which re-fires useEffect([isActive]).
+              // At that point sessionRef.current is still null (await below hasn't resolved).
+              // Keeping isInitializingRef=true blocks any re-entry until sessionRef is set.
               sessionOpenedRef.current = true;
-
-              // Reset reconnect counter on successful connection
               reconnectAttemptsRef.current = 0;
 
               const source =
@@ -576,13 +674,56 @@ const CustomVoiceSession = forwardRef(
                     });
                   }
 
+                  let toolResult = "Action completed in Brilworks CRM.";
+                  console.log("Tool result", toolResult);
+                  if (fc.name === "search_knowledge_base") {
+                    const query = fc.args?.query?.trim();
+                    if (!query) {
+                      toolResult = "Knowledge search query was empty.";
+                    } else {
+                      try {
+                        const session = await authService.getSession();
+                        if (!session?.access_token) {
+                          throw new Error("User session is not available");
+                        }
+
+                        const response = await fetch(
+                          `/api/agents/${industry.id}/knowledge/search`,
+                          {
+                            method: "POST",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${session.access_token}`,
+                            },
+                            body: JSON.stringify({
+                              query,
+                              limit: 3,
+                            }),
+                          },
+                        );
+
+                        const result = await response.json();
+                        if (!response.ok) {
+                          throw new Error(
+                            result?.error || "Knowledge search failed",
+                          );
+                        }
+
+                        toolResult =
+                          result?.contextText || "No matching knowledge found.";
+                      } catch (error) {
+                        toolResult = `Knowledge search failed: ${error?.message || "Unknown error"}`;
+                      }
+                    }
+                  }
+
                   sessionPromise.then((s) =>
                     s.sendToolResponse({
                       functionResponses: {
                         id: fc.id,
                         name: fc.name,
                         response: {
-                          result: "Action completed in Brilworks CRM.",
+                          result: toolResult,
                         },
                       },
                     }),
@@ -592,20 +733,17 @@ const CustomVoiceSession = forwardRef(
             },
             onerror: (e) => {
               console.error("Session error:", e);
-              // Only stop if it's a critical error, not just a connection hiccup
               if (e.code && e.code !== "NORMAL_CLOSURE") {
                 stopLiveSession();
               }
             },
             onclose: (event) => {
-              // Mark session as inactive to prevent audio callbacks from sending data
               isSessionActiveRef.current = false;
 
               const sessionDuration = Date.now() - lastStartAttemptRef.current;
               const didOpen = sessionOpenedRef.current;
-              sessionOpenedRef.current = false; // reset for next attempt
+              sessionOpenedRef.current = false;
 
-              // Log close reason for debugging
               console.log("🔴 WebSocket session closed:", {
                 code: event.code,
                 reason: event.reason || "No reason provided",
@@ -615,13 +753,11 @@ const CustomVoiceSession = forwardRef(
               });
 
               // Only treat as a failed-init if onopen never fired.
-              // If onopen DID fire, the connection was real — the server closed it intentionally
-              // (e.g. rate limit, config issue). Treat it as a normal close regardless of duration.
+              // If onopen fired the connection was real — fall through to normal handling.
               if (!didOpen && sessionDuration < MIN_SESSION_LIFETIME_MS) {
                 console.error(
-                  `⚠️ Session closed after only ${sessionDuration}ms without onopen firing. This indicates a connection failure. Stopping session.`,
+                  `⚠️ Session closed after only ${sessionDuration}ms without onopen firing. Connection failure. Stopping session.`,
                 );
-                // Clean up
                 if (scriptProcessorRef.current) {
                   try {
                     scriptProcessorRef.current.disconnect();
@@ -631,22 +767,12 @@ const CustomVoiceSession = forwardRef(
                 sessionRef.current = null;
                 sessionPromiseRef.current = null;
                 isInitializingRef.current = false;
-                shouldStopRef.current = true; // 🔒 Prevent restart in render cycle
+                shouldStopRef.current = true;
                 setIsInitializing(false);
-                // Signal parent to stop and prevent restart
                 onStop();
                 return;
               }
 
-              // Common close codes:
-              // 1000: Normal closure
-              // 1001: Going away (server shutdown, browser navigation)
-              // 1006: Abnormal closure (no close frame received)
-              // 1008: Policy violation
-              // 1011: Internal server error
-              // 4000+: Custom application codes
-
-              // If it was an abnormal closure, it might be a timeout or network issue
               if (event.code === 1006 || event.code === 1011) {
                 console.warn(
                   "Session closed abnormally - possible timeout or network issue",
@@ -662,8 +788,6 @@ const CustomVoiceSession = forwardRef(
                 console.warn(
                   `WebSocket closed with policy violation (1008). Reconnecting... (attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})`,
                 );
-
-                // Clean up existing resources before reconnecting
                 if (scriptProcessorRef.current) {
                   try {
                     scriptProcessorRef.current.disconnect();
@@ -684,9 +808,7 @@ const CustomVoiceSession = forwardRef(
                   } catch (e) {}
                   outputAudioContextRef.current = null;
                 }
-
-                // Attempt reconnect after a short delay
-                shouldStopRef.current = false; // Allow restart for intentional reconnect
+                shouldStopRef.current = false;
                 isInitializingRef.current = false;
                 setTimeout(() => {
                   startLiveSession();
@@ -700,41 +822,31 @@ const CustomVoiceSession = forwardRef(
                 );
               }
 
-              // Clean up audio processor
               if (scriptProcessorRef.current) {
                 try {
                   scriptProcessorRef.current.disconnect();
-                } catch (e) {
-                  // Already disconnected
-                }
+                } catch (e) {}
                 scriptProcessorRef.current = null;
               }
 
-              // Clear session refs
               sessionRef.current = null;
               sessionPromiseRef.current = null;
               isInitializingRef.current = false;
               setIsInitializing(false);
 
-              // For code 1000 (normal closure) or 1001 (going away), stop the session
-              // This signals the parent to set isActive=false and prevent restart loops
-              // Do NOT automatically restart on clean closures - let user explicitly start new session
               if (event.code === 1000 || event.code === 1001) {
                 console.log(
-                  "Session ended normally (code " +
-                    event.code +
-                    "). Stopping session to prevent restart loop.",
+                  `Session ended normally (code ${event.code}). Stopping to prevent restart loop.`,
                 );
-                shouldStopRef.current = true; // 🔒 Prevent restart in render cycle
+                shouldStopRef.current = true;
                 onStop();
-                return; // Important: return here to prevent any further execution
+                return;
               }
 
-              // For other error codes, also clean up and stop
               console.warn(
                 `Session closed with error code ${event.code}. Stopping session.`,
               );
-              shouldStopRef.current = true; // 🔒 Prevent restart in render cycle
+              shouldStopRef.current = true;
               onStop();
             },
           },
@@ -756,15 +868,11 @@ const CustomVoiceSession = forwardRef(
                 : {},
             // Omit 'tools' entirely when not used — the Gemini native audio API rejects tools: []
             // and closes the connection with code 1000 after onopen.
-            ...(industry.usesCrmTools
+            ...(functionDeclarations.length > 0
               ? {
                   tools: [
                     {
-                      functionDeclarations: [
-                        captureDataFunction,
-                        logToCrmFunction,
-                        searchPropertiesFunction,
-                      ],
+                      functionDeclarations,
                     },
                   ],
                 }
@@ -774,8 +882,8 @@ const CustomVoiceSession = forwardRef(
 
         sessionPromiseRef.current = sessionPromise;
         sessionRef.current = await sessionPromise;
-        // Now that sessionRef is set, it's safe to clear the initializing guard.
-        // Any useEffect triggered by onStart() will see sessionRef.current != null and skip.
+        // Safe to clear now — sessionRef.current is set, so useEffect re-entry will
+        // see sessionRef.current != null and skip startLiveSession.
         isInitializingRef.current = false;
       } catch (err) {
         console.error("Failed to start session", err);
@@ -785,8 +893,12 @@ const CustomVoiceSession = forwardRef(
       }
     };
 
+    // Stable ref so the unmount cleanup can call the latest stopLiveSession without
+    // being a reactive dependency — avoids triggering cleanup on every parent re-render.
+    const stopLiveSessionRef = useRef(null);
+
     const stopLiveSession = useCallback(() => {
-      // Set guard before any async work to prevent restart during render cycle
+      // Set guards synchronously before any async cleanup
       shouldStopRef.current = true;
       isInitializingRef.current = false;
       // Mark session as inactive first to prevent any pending audio callbacks from sending data
@@ -844,10 +956,13 @@ const CustomVoiceSession = forwardRef(
       onStop();
     }, [onStop]);
 
+    // Keep the ref in sync with the latest callback instance.
+    // This is safe to do inline (no effect needed) since refs are mutable.
+    stopLiveSessionRef.current = stopLiveSession;
+
     // Handle starting/stopping based on the isActive prop
-    // IMPORTANT: use isInitializingRef (synchronous ref) NOT the isInitializing state variable.
-    // React state is async — when isActive changes and this effect fires, the stale captured
-    // value of isInitializing may be false even though initialization is in progress.
+    // Use isInitializingRef (synchronous) not isInitializing (async React state).
+    // Stale state can pass the guard during the render triggered by onStop().
     useEffect(() => {
       if (
         isActive &&
@@ -861,15 +976,20 @@ const CustomVoiceSession = forwardRef(
       }
     }, [isActive]); // Only react to the boolean toggle
 
-    // ONLY cleanup when the component is actually destroyed (unmounted)
+    // ONLY cleanup when the component is actually destroyed (unmounted).
+    // IMPORTANT: empty dep array [] so this effect does NOT re-run (and re-run cleanup)
+    // whenever stopLiveSession changes reference due to a parent re-render.
+    // Previously [stopLiveSession] caused the cleanup to fire mid-session whenever the
+    // parent re-rendered with a new onStop callback reference (e.g. page.js loading
+    // customFields), which silently closed a live session with code 1000.
     useEffect(() => {
       return () => {
         // This runs ONLY when the user navigates away or closes the tab
         if (sessionRef.current) {
-          stopLiveSession();
+          stopLiveSessionRef.current?.();
         }
       };
-    }, [stopLiveSession]);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Update ref when capturedData changes
     useEffect(() => {
@@ -904,11 +1024,6 @@ const CustomVoiceSession = forwardRef(
         }
       }
     }, [capturedData]); // Runs whenever capturedData prop changes
-
-    // Disabled automatic syncing to prevent WebSocket errors
-    // Instead, we'll send captured data only when session starts or when explicitly needed
-    // The data is still available in the component state for the agent to reference
-
     return (
       <div className="flex flex-col items-center justify-center space-y-4 py-2">
         <div className="relative">
@@ -925,7 +1040,7 @@ const CustomVoiceSession = forwardRef(
               isActive
                 ? undefined
                 : () => {
-                    shouldStopRef.current = false; // 🔒 Allow restart only on user intent
+                    shouldStopRef.current = false; // reset guard on explicit user click
                     startLiveSession();
                   }
             }
@@ -946,7 +1061,7 @@ const CustomVoiceSession = forwardRef(
                 ))}
               </div>
             ) : (
-              <div className="text-4xl">🎙️</div>
+              <div className="text-xl">🎙️</div>
             )}
           </div>
         </div>
@@ -981,5 +1096,4 @@ const CustomVoiceSession = forwardRef(
 
 CustomVoiceSession.displayName = "CustomVoiceSession";
 
-// (re-export above replaces this)
-// export default CustomVoiceSession;
+export default CustomVoiceSession;
