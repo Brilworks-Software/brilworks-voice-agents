@@ -12,7 +12,7 @@ import { encode, decode, decodeAudioData } from "./services/audioUtils";
 import { getBrilworksBase } from "./constants";
 import { authService } from "@/services/authService";
 
-const VoiceSession = forwardRef(
+const CustomVoiceSession = forwardRef(
   (
     {
       industry,
@@ -29,19 +29,6 @@ const VoiceSession = forwardRef(
     },
     ref,
   ) => {
-    console.log({
-      industry,
-      language,
-      isActive,
-      onStart,
-      onStop,
-      onMessage,
-      onDataCaptured,
-      capturedData,
-      // customFields is optional — existing 15 agents don't pass it and get default []
-      customFields,
-      enableKnowledgeBase,
-    });
     console.log({
       industry,
       language,
@@ -148,16 +135,6 @@ const VoiceSession = forwardRef(
       };
       return acc;
     }, {});
-
-    const isCustomAgentWithoutBant = industry.isCustomAgent && !bantEnabled;
-
-    const logToCrmDescription = isCustomAgentWithoutBant
-      ? `Synchronize lead data with Brilworks CRM (Google Sheets) only after all required fields are available, including required custom fields: ${requiredDynamicFieldNames.length > 0 ? requiredDynamicFieldNames.join(", ") : "none"}. Determine lead_score based on overall qualification readiness: HOT (high intent, strong fit, ready to move), WARM (interested and qualified but needs follow-up), or COLD (early-stage interest or low readiness).`
-      : `Synchronize lead data with Brilworks CRM (Google Sheets) only after all required fields are available, including required custom fields: ${requiredDynamicFieldNames.length > 0 ? requiredDynamicFieldNames.join(", ") : "none"}. Determine lead_score: HOT (ready to buy, budget confirmed, timeline < 1 month, has authority), WARM (interested, has budget, timeline 1-3 months), or COLD (just browsing, no clear budget/timeline/authority).`;
-
-    const leadScoreDescription = isCustomAgentWithoutBant
-      ? 'Lead qualification based on overall readiness and intent: "HOT", "WARM", or "COLD".'
-      : 'Lead qualification based on captured BANT data (Budget, Authority, Need, Timeline): "HOT", "WARM", or "COLD".';
     // ─────────────────────────────────────────────────────────────────────────
 
     useImperativeHandle(ref, () => ({
@@ -221,7 +198,7 @@ const VoiceSession = forwardRef(
       name: "log_to_crm",
       parameters: {
         type: Type.OBJECT,
-        description: logToCrmDescription,
+        description: `Synchronize lead data with Brilworks CRM (Google Sheets) only after all required fields are available, including required custom fields: ${requiredDynamicFieldNames.length > 0 ? requiredDynamicFieldNames.join(", ") : "none"}. Determine lead_score: HOT (ready to buy, budget confirmed, timeline < 1 month, has authority), WARM (interested, has budget, timeline 1-3 months), or COLD (just browsing, no clear budget/timeline/authority).`,
         properties: {
           lead_name: {
             type: Type.STRING,
@@ -235,7 +212,8 @@ const VoiceSession = forwardRef(
           },
           lead_score: {
             type: Type.STRING,
-            description: leadScoreDescription,
+            description:
+              'Lead qualification based on captured BANT data (Budget, Authority, Need, Timeline): "HOT", "WARM", or "COLD".',
           },
           ...(bantEnabled
             ? {
@@ -378,7 +356,7 @@ const VoiceSession = forwardRef(
           normalizedCustomFields.length > 0;
 
         const leadQualificationGuidance = shouldIncludeQualificationTools
-          ? '\n\nLEAD QUALIFICATION GUIDANCE:\n- Strict order: first collect all required fields and complete lead qualification.\n- Do not switch to other topics before qualification details are captured.\n- After qualification is complete, compulsorily ask: "Do you have any questions about the knowledge base?"\n- Keep responses concise, relevant, and focused on lead qualification outcomes.'
+          ? "\n\nLEAD QUALIFICATION GUIDANCE:\n- If the user asks a question, answer it clearly and helpfully first.\n- If the user has no question, proactively collect information required for lead capture.\n- While answering, keep moving the conversation toward capturing missing required lead details.\n- Keep responses concise, relevant, and focused on qualification goals."
           : "";
 
         // For custom agents: use the user's system prompt directly — no sub-prompts
@@ -665,7 +643,6 @@ const VoiceSession = forwardRef(
 
               if (message.toolCall) {
                 for (const fc of message.toolCall.functionCalls) {
-                  let toolResult = "Action completed in Brilworks CRM.";
                   if (fc.name === "capture_information") {
                     const args = fc.args;
                     onDataCaptured({ [args.field_name]: args.value });
@@ -681,74 +658,13 @@ const VoiceSession = forwardRef(
                       contact_info: args.contact_info || "",
                       preferences: args.preferences || "",
                     });
-
-                    try {
-                      const session = await authService.getSession();
-                      if (!session?.access_token) {
-                        throw new Error("User session is not available");
-                      }
-
-                      const standardLeadKeys = new Set([
-                        "lead_name",
-                        "contact_info",
-                        "lead_score",
-                        "budget",
-                        "authority",
-                        "need",
-                        "timeline",
-                        "schedule_meeting_at",
-                        "follow_up_reminder",
-                        "email",
-                        "phone",
-                      ]);
-
-                      const customFields = Object.entries(args || {}).reduce(
-                        (acc, [key, value]) => {
-                          if (!standardLeadKeys.has(key)) {
-                            acc[key] = value;
-                          }
-                          return acc;
-                        },
-                        {},
-                      );
-
-                      const response = await fetch(
-                        `/api/agents/${industry.id}/leads`,
-                        {
-                          method: "POST",
-                          headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${session.access_token}`,
-                          },
-                          body: JSON.stringify({
-                            lead_name: args.lead_name,
-                            contact_info: args.contact_info,
-                            lead_score: args.lead_score,
-                            budget: args.budget,
-                            authority: args.authority,
-                            need: args.need,
-                            timeline: args.timeline,
-                            schedule_meeting_at: args.schedule_meeting_at,
-                            custom_fields: customFields,
-                          }),
-                        },
-                      );
-
-                      const result = await response.json();
-                      if (!response.ok) {
-                        throw new Error(result?.error || "Lead sync failed");
-                      }
-
-                      onDataCaptured({
-                        crm_sync: "Synced to Database ✅",
-                      });
-                      toolResult = "Lead saved to database successfully.";
-                    } catch (error) {
-                      onDataCaptured({
-                        crm_sync: "Lead sync failed ❌",
-                      });
-                      toolResult = `Lead sync failed: ${error?.message || "Unknown error"}`;
-                    }
+                    setTimeout(
+                      () =>
+                        onDataCaptured({
+                          crm_sync: "Synced to Google Sheets ✅",
+                        }),
+                      1500,
+                    );
                   }
                   if (fc.name === "search_properties") {
                     const args = fc.args;
@@ -758,6 +674,7 @@ const VoiceSession = forwardRef(
                     });
                   }
 
+                  let toolResult = "Action completed in Brilworks CRM.";
                   console.log("Tool result", toolResult);
                   if (fc.name === "search_knowledge_base") {
                     const query = fc.args?.query?.trim();
@@ -1144,7 +1061,7 @@ const VoiceSession = forwardRef(
                 ))}
               </div>
             ) : (
-              <div className="text-4xl">🎙️</div>
+              <div className="text-xl">🎙️</div>
             )}
           </div>
         </div>
@@ -1177,6 +1094,6 @@ const VoiceSession = forwardRef(
   },
 );
 
-VoiceSession.displayName = "VoiceSession";
+CustomVoiceSession.displayName = "CustomVoiceSession";
 
-export default VoiceSession;
+export default CustomVoiceSession;

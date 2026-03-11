@@ -47,7 +47,7 @@ const IndustryCard = ({ industry, onClick }) => {
       <div className="mb-4 bg-slate-50 w-16 h-16 flex items-center justify-center rounded-2xl group-hover:scale-110 transition-transform">
         <IconComponent className="w-8 h-8 text-slate-700" strokeWidth={2} />
       </div>
-      <h3 className="text-lg font-bold text-slate-900 mb-2">{industry.name}</h3>
+      <h3 className="text-md font-bold text-slate-900 mb-2">{industry.name}</h3>
       <p className="text-slate-500 text-sm mb-4 flex-1">
         {industry.description}
       </p>
