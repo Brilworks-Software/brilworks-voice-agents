@@ -7,6 +7,49 @@ import { Trash2, Edit2, Play, Plus, Users, Sparkles } from "lucide-react";
 import { authService } from "../../services/authService";
 import { customAgentsService } from "../../services/customAgentsService";
 
+const accentByIndustry = {
+  healthcare: {
+    card: "border-emerald-400/30 hover:border-emerald-400",
+    chip: "dialora-chip-emerald",
+  },
+  finance: {
+    card: "border-amber-400/30 hover:border-amber-400",
+    chip: "dialora-chip-amber",
+  },
+  banking: {
+    card: "border-amber-400/30 hover:border-amber-400",
+    chip: "dialora-chip-amber",
+  },
+  real: {
+    card: "border-sky-400/30 hover:border-sky-400",
+    chip: "dialora-chip-blue",
+  },
+  beauty: {
+    card: "border-pink-400/30 hover:border-pink-400",
+    chip: "dialora-chip-pink",
+  },
+  retail: {
+    card: "border-cyan-400/30 hover:border-cyan-400",
+    chip: "dialora-chip-cyan",
+  },
+  legal: {
+    card: "border-violet-400/30 hover:border-violet-400",
+    chip: "dialora-chip-violet",
+  },
+};
+
+const getAccent = (industry = "") => {
+  const normalized = String(industry).toLowerCase();
+  return (
+    Object.entries(accentByIndustry).find(([key]) =>
+      normalized.includes(key),
+    )?.[1] || {
+      card: "border-sky-400/30 hover:border-sky-400",
+      chip: "dialora-chip-blue",
+    }
+  );
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const [agents, setAgents] = useState([]);
@@ -80,7 +123,7 @@ export default function DashboardPage() {
         {cardSkeletons.map((skeleton) => (
           <div
             key={skeleton}
-            className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm ring-1 ring-slate-100 animate-pulse"
+            className="dialora-panel rounded-2xl p-6 animate-pulse"
           >
             <div className="h-6 w-40 bg-slate-200 rounded mb-4" />
             <div className="flex gap-2 mb-4">
@@ -99,8 +142,8 @@ export default function DashboardPage() {
     );
   } else if (agents.length === 0) {
     renderContent = (
-      <div className="bg-white rounded-2xl p-10 md:p-12 text-center border-2 border-dashed border-slate-300 shadow-sm ring-1 ring-slate-100">
-        <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
+      <div className="dialora-panel rounded-2xl p-10 md:p-12 text-center border-2 border-dashed border-slate-300">
+        <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-gradient-to-br from-sky-500/20 to-violet-500/20 text-blue-600 flex items-center justify-center border border-sky-400/20">
           <Sparkles size={22} />
         </div>
         <div className="text-slate-700 mb-3 text-md font-medium">
@@ -111,7 +154,7 @@ export default function DashboardPage() {
         </p>
         <Link
           href="/dashboard/create-agent"
-          className="inline-flex items-center space-x-2 bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 transition-colors shadow-sm"
+          className="dialora-primary-btn inline-flex items-center space-x-2 px-6 py-3 rounded-xl"
         >
           <Plus size={20} />
           <span>Create Agent</span>
@@ -124,17 +167,17 @@ export default function DashboardPage() {
         {agents.map((agent) => (
           <div
             key={agent.id}
-            className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all flex flex-col h-full"
+            className={`dialora-panel dialora-glow-card rounded-2xl p-6 transition-all flex flex-col h-full hover:-translate-y-1 ${getAccent(agent.industry).card}`}
           >
             <div className="mb-4">
               <h3 className="text-md font-bold text-slate-900">{agent.name}</h3>
               <div className="flex items-center space-x-2 mt-2">
-                <span className="inline-block bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm font-medium border border-blue-200">
+                <span
+                  className={`dialora-chip ${getAccent(agent.industry).chip}`}
+                >
                   {agent.industry}
                 </span>
-                <span className="inline-block bg-slate-100 text-slate-700 px-3 py-1 rounded-full text-sm font-medium border border-slate-200">
-                  {agent.language}
-                </span>
+                <span className="dialora-chip">{agent.language}</span>
               </div>
             </div>
 
@@ -152,14 +195,14 @@ export default function DashboardPage() {
             <div className="flex items-center space-x-2 mt-auto">
               <Link
                 href={`/dashboard/agent/${agent.id}`}
-                className="flex-1 flex items-center justify-center space-x-2 bg-blue-600 text-white py-2.5 rounded-xl hover:bg-blue-700 transition-colors text-sm font-medium"
+                className="flex-1 dialora-primary-btn flex items-center justify-center space-x-2 py-2.5 rounded-xl text-sm font-medium"
               >
                 <Play size={16} />
                 <span>Launch</span>
               </Link>
               <Link
                 href={`/dashboard/agents/${agent.id}/edit`}
-                className="p-2.5 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors border border-transparent hover:border-slate-200"
+                className="p-2.5 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors border border-slate-200"
                 title="Edit agent"
               >
                 <Edit2 size={18} />
@@ -193,7 +236,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-7 shadow-sm ring-1 ring-slate-100">
+      <div className="dialora-panel rounded-2xl p-6 md:p-7">
         <h1 className="text-xl font-bold text-slate-800">Your Agents</h1>
         <p className="text-slate-500 mt-2">Manage your custom voice agents</p>
       </div>
@@ -202,14 +245,14 @@ export default function DashboardPage() {
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <Link
             href="/dashboard/leads"
-            className="inline-flex items-center justify-center space-x-2 bg-white text-slate-700 px-5 py-3 rounded-xl hover:bg-slate-50 transition-colors border border-slate-300 shadow-sm"
+            className="dialora-secondary-btn inline-flex items-center justify-center space-x-2 px-5 py-3 rounded-xl"
           >
             <Users size={20} />
             <span>View Leads</span>
           </Link>
           <Link
             href="/dashboard/create-agent"
-            className="inline-flex items-center justify-center space-x-2 bg-blue-600 text-white px-5 py-3 rounded-xl hover:bg-blue-700 transition-colors shadow-sm"
+            className="dialora-primary-btn inline-flex items-center justify-center space-x-2 px-5 py-3 rounded-xl"
           >
             <Plus size={20} />
             <span>Create New Agent</span>

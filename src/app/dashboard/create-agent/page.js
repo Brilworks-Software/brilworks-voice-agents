@@ -247,7 +247,7 @@ export default function CreateAgentPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Header */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm ring-1 ring-slate-100 p-6 md:p-7">
+      <div className="dialora-panel rounded-2xl p-6 md:p-7">
         <Link
           href="/dashboard"
           className="inline-flex items-center space-x-2 text-blue-600 hover:text-blue-700 mb-4 text-sm font-medium"
@@ -264,7 +264,7 @@ export default function CreateAgentPage() {
       </div>
 
       {/* Form */}
-      <div className="bg-white rounded-2xl p-6 md:p-8 border border-slate-200 shadow-sm ring-1 ring-slate-100">
+      <div className="dialora-panel rounded-2xl p-6 md:p-8">
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
             {error}
@@ -623,13 +623,13 @@ export default function CreateAgentPage() {
             <button
               type="submit"
               disabled={isSaving}
-              className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 dialora-primary-btn py-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSaving ? "Creating Agent..." : "Create Agent"}
             </button>
             <Link
               href="/dashboard"
-              className="px-6 py-3 border border-slate-300 rounded-lg font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+              className="dialora-secondary-btn px-6 py-3 rounded-lg"
             >
               Cancel
             </Link>

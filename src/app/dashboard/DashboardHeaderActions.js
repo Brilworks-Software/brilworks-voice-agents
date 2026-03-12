@@ -26,14 +26,14 @@ export default function DashboardHeaderActions() {
     <div className="flex items-center gap-2 sm:gap-4">
       <Link
         href="/dashboard"
-        className="text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors"
+        className="dialora-secondary-btn text-sm border-sky-400/20"
       >
         Dashboard
       </Link>
       <button
         onClick={handleLogout}
         disabled={isLoggingOut}
-        className="text-sm font-semibold text-slate-600 hover:text-red-600 transition-colors disabled:opacity-60"
+        className="dialora-secondary-btn text-sm text-red-400 border-red-400/20 disabled:opacity-60"
       >
         {isLoggingOut ? "Logging out..." : "Logout"}
       </button>

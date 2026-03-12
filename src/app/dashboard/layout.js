@@ -5,9 +5,9 @@ import DashboardHeaderActions from "./DashboardHeaderActions";
 
 export default function DashboardLayout({ children }) {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="dialora-page-shell text-slate-900">
       {/* Dashboard Header */}
-      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 px-4 sm:px-6 py-4">
+      <header className="sticky top-0 z-20 bg-[#1f232c]/95 backdrop-blur border-b border-slate-200 px-4 sm:px-6 py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
           <Link href="/" className="shrink-0 mx-2 sm:mx-4">
             <div className="header_logo">

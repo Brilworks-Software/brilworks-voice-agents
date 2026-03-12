@@ -29,9 +29,9 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-10">
+    <div className="dialora-page-shell flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm ring-1 ring-slate-100 p-8">
+        <div className="dialora-panel rounded-2xl p-8">
           <div className="mb-8 flex justify-center">
             <Image
               src="/logo-black.svg"
@@ -86,7 +86,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full dialora-primary-btn rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? "Signing in..." : "Sign In"}
             </button>
