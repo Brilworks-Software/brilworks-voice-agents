@@ -15,7 +15,66 @@ import {
 } from "lucide-react";
 import { authService } from "../../../../services/authService";
 import { customAgentsService } from "../../../../services/customAgentsService";
+import { useGuestMode } from "../../../../lib/guest/GuestModeContext";
+import GuestBanner from "../../components/GuestBanner";
+import UpgradeAccountModal from "../../components/UpgradeAccountModal";
 import VoiceSession from "../../../components/VoiceAgents/VoiceSession";
+
+const getAccentTheme = (industry = "") => {
+  const normalized = String(industry).toLowerCase();
+
+  if (normalized.includes("health")) {
+    return {
+      chip: "dialora-chip-emerald",
+      iconWrap: "bg-emerald-500/12 border border-emerald-400/20",
+      iconColor: "text-emerald-300",
+      panelBorder: "border-emerald-400/20",
+    };
+  }
+
+  if (normalized.includes("retail") || normalized.includes("travel")) {
+    return {
+      chip: "dialora-chip-cyan",
+      iconWrap: "bg-cyan-500/12 border border-cyan-400/20",
+      iconColor: "text-cyan-300",
+      panelBorder: "border-cyan-400/20",
+    };
+  }
+
+  if (normalized.includes("beauty") || normalized.includes("aesthetic")) {
+    return {
+      chip: "dialora-chip-pink",
+      iconWrap: "bg-pink-500/12 border border-pink-400/20",
+      iconColor: "text-pink-300",
+      panelBorder: "border-pink-400/20",
+    };
+  }
+
+  if (normalized.includes("finance") || normalized.includes("bank")) {
+    return {
+      chip: "dialora-chip-amber",
+      iconWrap: "bg-amber-500/12 border border-amber-400/20",
+      iconColor: "text-amber-300",
+      panelBorder: "border-amber-400/20",
+    };
+  }
+
+  if (normalized.includes("real") || normalized.includes("property")) {
+    return {
+      chip: "dialora-chip-blue",
+      iconWrap: "bg-sky-500/12 border border-sky-400/20",
+      iconColor: "text-sky-300",
+      panelBorder: "border-sky-400/20",
+    };
+  }
+
+  return {
+    chip: "dialora-chip-violet",
+    iconWrap: "bg-violet-500/12 border border-violet-400/20",
+    iconColor: "text-violet-300",
+    panelBorder: "border-violet-400/20",
+  };
+};
 
 // Helper function to map voice persona to Gemini voice names
 const getVoiceForPersona = (persona) => {
@@ -70,6 +129,7 @@ export default function LaunchAgentPage() {
   const router = useRouter();
   const params = useParams();
   const agentId = params.id;
+  const { isGuest } = useGuestMode();
 
   const [user, setUser] = useState(null);
   const [agent, setAgent] = useState(null);
@@ -80,11 +140,19 @@ export default function LaunchAgentPage() {
   const [capturedData, setCapturedData] = useState({});
   const [conversationLog, setConversationLog] = useState([]);
   const [isSubmittingLead, setIsSubmittingLead] = useState(false);
+  const [showMigrateModal, setShowMigrateModal] = useState(false);
 
   const voiceSessionRef = useRef(null);
 
+
   useEffect(() => {
     const checkAuthAndLoadAgent = async () => {
+      if (!agentId) {
+        setIsLoading(false);
+        router.push("/dashboard");
+        return;
+      }
+
       try {
         const currentUser = await authService.getCurrentUser();
         if (!currentUser) {
@@ -98,22 +166,16 @@ export default function LaunchAgentPage() {
           router.push("/dashboard");
           return;
         }
+
         setAgent(agentData);
 
         // Load custom fields
         try {
           const session = await authService.getSession();
-
-          if (!session?.access_token) {
-            throw new Error("User session is not available");
-          }
-
+          if (!session?.access_token) throw new Error("No session");
           const response = await fetch(`/api/agents/${agentId}/custom-fields`, {
-            headers: {
-              Authorization: `Bearer ${session.access_token}`,
-            },
+            headers: { Authorization: `Bearer ${session.access_token}` },
           });
-
           if (response.ok) {
             const data = await response.json();
             setCustomFields(data.customFields || []);
@@ -210,6 +272,8 @@ export default function LaunchAgentPage() {
     capturedData.crm_sync === "Synced to Database ✅" ||
     capturedData.crm_sync === "Synced to Google Sheets ✅";
 
+  const accent = getAccentTheme(agent?.industry);
+
   const handleSubmitRequirements = useCallback(async () => {
     if (!agentId || isSubmittingLead) {
       return;
@@ -221,11 +285,6 @@ export default function LaunchAgentPage() {
     );
 
     try {
-      const session = await authService.getSession();
-      if (!session?.access_token) {
-        throw new Error("User session is not available");
-      }
-
       const leadName = getFieldValue("contact_name") || "Anonymous";
       const email = getFieldValue("email") || "";
       const phone = getFieldValue("phone") || "";
@@ -265,23 +324,32 @@ export default function LaunchAgentPage() {
         {},
       );
 
+      const leadPayload = {
+        lead_name: leadName,
+        email,
+        phone,
+        contact_info: contactInfo,
+        lead_score: getFieldValue("lead_score") || null,
+        budget: getFieldValue("budget") || null,
+        authority: getFieldValue("authority") || null,
+        need: getFieldValue("need") || null,
+        timeline: getFieldValue("timeline") || null,
+        schedule_meeting_at: getFieldValue("schedule_meeting_at") || null,
+        custom_fields: customFieldsPayload,
+      };
+
+      const session = await authService.getSession();
+      if (!session?.access_token) {
+        throw new Error("User session is not available");
+      }
+
       const response = await fetch(`/api/agents/${agentId}/leads`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({
-          lead_name: leadName,
-          contact_info: contactInfo,
-          lead_score: getFieldValue("lead_score") || null,
-          budget: getFieldValue("budget") || null,
-          authority: getFieldValue("authority") || null,
-          need: getFieldValue("need") || null,
-          timeline: getFieldValue("timeline") || null,
-          schedule_meeting_at: getFieldValue("schedule_meeting_at") || null,
-          custom_fields: customFieldsPayload,
-        }),
+        body: JSON.stringify(leadPayload),
       });
 
       const result = await response.json();
@@ -305,14 +373,19 @@ export default function LaunchAgentPage() {
     } finally {
       setIsSubmittingLead(false);
     }
-  }, [agentId, capturedData, getFieldValue, isSubmittingLead]);
+  }, [
+    agentId,
+    capturedData,
+    getFieldValue,
+    isSubmittingLead,
+  ]);
 
   const handleEndSession = async () => {
     if (voiceSessionRef.current) {
       // Note: VoiceSession will handle cleanup
     }
 
-    // Save conversation to database
+    // Save conversation
     try {
       if (Object.keys(capturedData).length > 0 || conversationLog.length > 0) {
         await customAgentsService.saveConversation({
@@ -341,28 +414,78 @@ export default function LaunchAgentPage() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/dashboard"
-            className="p-2 rounded-full hover:bg-slate-100 transition-colors"
-          >
-            <ChevronLeft size={20} className="text-slate-500" />
-          </Link>
-          <div className="leading-tight">
-            <h1 className="text-xl md:text-xl font-bold text-slate-900">
-              {agent.name}
-            </h1>
-            <p className="text-sm text-slate-500">
-              {agent.industry} • {agent.language}
-            </p>
+      {isGuest && (
+        <GuestBanner onSignUp={() => setShowMigrateModal(true)} />
+      )}
+
+      <div
+        className={`dialora-hero-panel rounded-2xl p-5 md:p-6 ${accent.panelBorder}`}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/dashboard"
+              className="dialora-secondary-btn p-2.5 rounded-full min-w-0"
+            >
+              <ChevronLeft size={18} className="text-slate-500" />
+            </Link>
+            <div className="leading-tight">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <span className={`dialora-chip ${accent.chip}`}>
+                  {agent.industry}
+                </span>
+                <span className="dialora-chip">
+                  {getLanguageName(agent.language)}
+                </span>
+              </div>
+              <h1 className="text-2xl font-bold text-slate-900">
+                {agent.name}
+              </h1>
+              <p className="text-sm text-slate-500 mt-1">
+                Live launch console for voice interactions, lead capture, and
+                knowledge-assisted responses.
+              </p>
+            </div>
+          </div>
+
+          <div className="hidden md:flex items-center gap-3">
+            <div className="dialora-panel rounded-2xl px-4 py-3 min-w-[180px]">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                Session
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${isSessionActive ? "bg-emerald-400" : "bg-rose-400"}`}
+                />
+                <span className="font-semibold text-slate-900">
+                  {isSessionActive ? "Call in progress" : "Ready to connect"}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm ring-1 ring-slate-100">
+          <section
+            className={`dialora-panel dialora-glow-card rounded-2xl p-4 md:p-5 ${accent.panelBorder}`}
+          >
+            <div className="mb-4 flex items-center justify-between gap-3 px-1">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                  Launch console
+                </p>
+                <h2 className="text-lg font-semibold text-slate-900 mt-1">
+                  Talk to your agent live
+                </h2>
+              </div>
+              <div
+                className={`dialora-chip ${isSessionActive ? "dialora-chip-emerald" : accent.chip}`}
+              >
+                {isSessionActive ? "Listening" : "Standby"}
+              </div>
+            </div>
             <VoiceSession
               ref={voiceSessionRef}
               industry={{
@@ -399,10 +522,12 @@ export default function LaunchAgentPage() {
               capturedData={capturedData}
               customFields={customFields}
               enableKnowledgeBase
+              onLogToCrm={null}
+              onKnowledgeSearch={null}
             />
           </section>
 
-          <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm ring-1 ring-slate-100">
+          <section className="dialora-panel rounded-2xl p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">
                 Captured Data
@@ -416,7 +541,7 @@ export default function LaunchAgentPage() {
                   {visibleCapturedEntries.map(([key, value]) => (
                     <div
                       key={key}
-                      className="bg-slate-50 p-3 rounded-xl border border-slate-200"
+                      className="bg-slate-50 p-3 rounded-xl border border-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
                     >
                       <p className="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">
                         {String(key).replaceAll("_", " ")}
@@ -437,7 +562,7 @@ export default function LaunchAgentPage() {
                       className={`w-full py-3 px-4 rounded-xl font-bold text-sm transition-all duration-200 ${
                         isSubmittingLead
                           ? "bg-slate-400 text-white cursor-not-allowed"
-                          : "bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700"
+                          : "bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-950/40"
                       }`}
                     >
                       {isSubmittingLead
@@ -462,15 +587,17 @@ export default function LaunchAgentPage() {
         </div>
 
         <aside className="space-y-6">
-          <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm ring-1 ring-slate-100">
+          <section
+            className={`dialora-panel rounded-2xl p-5 ${accent.panelBorder}`}
+          >
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">
               Agent Info
             </h2>
 
             <div className="mt-4 space-y-4">
               <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-indigo-50">
-                  <UserRound size={18} className="text-indigo-500" />
+                <div className={`p-2.5 rounded-xl ${accent.iconWrap}`}>
+                  <UserRound size={18} className={accent.iconColor} />
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Voice Persona</p>
@@ -481,8 +608,8 @@ export default function LaunchAgentPage() {
               </div>
 
               <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-purple-50">
-                  <Building2 size={18} className="text-purple-500" />
+                <div className={`p-2.5 rounded-xl ${accent.iconWrap}`}>
+                  <Building2 size={18} className={accent.iconColor} />
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Industry</p>
@@ -493,8 +620,8 @@ export default function LaunchAgentPage() {
               </div>
 
               <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-pink-50">
-                  <Languages size={18} className="text-pink-500" />
+                <div className={`p-2.5 rounded-xl ${accent.iconWrap}`}>
+                  <Languages size={18} className={accent.iconColor} />
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Language</p>
@@ -506,7 +633,9 @@ export default function LaunchAgentPage() {
             </div>
           </section>
 
-          <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm ring-1 ring-slate-100">
+          <section
+            className={`dialora-panel rounded-2xl p-5 ${isSessionActive ? "border-emerald-400/20" : "border-rose-400/20"}`}
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="relative flex h-3 w-3">
@@ -532,7 +661,7 @@ export default function LaunchAgentPage() {
               {isSessionActive ? (
                 <button
                   onClick={handleEndSession}
-                  className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition-colors"
+                  className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition-colors dialora-pill"
                 >
                   End Session
                 </button>
@@ -547,7 +676,9 @@ export default function LaunchAgentPage() {
             </div>
           </section>
 
-          <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm ring-1 ring-slate-100">
+          <section
+            className={`dialora-panel rounded-2xl p-5 ${accent.panelBorder}`}
+          >
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4">
               Agent Knowledge Base
             </h2>
@@ -557,10 +688,15 @@ export default function LaunchAgentPage() {
                 {knowledgeDocuments.map((doc) => (
                   <div
                     key={doc.id}
-                    className="flex items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors"
+                    className="flex items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors"
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <FileText size={18} className="text-blue-500 shrink-0" />
+                      <div className={`p-2 rounded-lg ${accent.iconWrap}`}>
+                        <FileText
+                          size={16}
+                          className={`${accent.iconColor} shrink-0`}
+                        />
+                      </div>
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-slate-900 truncate">
                           {doc.fileName}
@@ -596,6 +732,11 @@ export default function LaunchAgentPage() {
           </section>
         </aside>
       </div>
+
+      <UpgradeAccountModal
+        isOpen={showMigrateModal}
+        onClose={() => setShowMigrateModal(false)}
+      />
     </div>
   );
 }

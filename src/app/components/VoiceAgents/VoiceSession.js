@@ -26,6 +26,11 @@ const VoiceSession = forwardRef(
       // customFields is optional — existing 15 agents don't pass it and get default []
       customFields = [],
       enableKnowledgeBase = false,
+      // Guest-mode callback overrides — when provided these replace the API fetch calls
+      // so guest users never hit authenticated endpoints.
+      // null means: use the default authenticated fetch behaviour.
+      onLogToCrm = null,
+      onKnowledgeSearch = null,
     },
     ref,
   ) => {
@@ -683,11 +688,6 @@ const VoiceSession = forwardRef(
                     });
 
                     try {
-                      const session = await authService.getSession();
-                      if (!session?.access_token) {
-                        throw new Error("User session is not available");
-                      }
-
                       const standardLeadKeys = new Set([
                         "lead_name",
                         "contact_info",
@@ -702,7 +702,7 @@ const VoiceSession = forwardRef(
                         "phone",
                       ]);
 
-                      const customFields = Object.entries(args || {}).reduce(
+                      const crmCustomFields = Object.entries(args || {}).reduce(
                         (acc, [key, value]) => {
                           if (!standardLeadKeys.has(key)) {
                             acc[key] = value;
@@ -712,37 +712,50 @@ const VoiceSession = forwardRef(
                         {},
                       );
 
-                      const response = await fetch(
-                        `/api/agents/${industry.id}/leads`,
-                        {
-                          method: "POST",
-                          headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${session.access_token}`,
-                          },
-                          body: JSON.stringify({
-                            lead_name: args.lead_name,
-                            contact_info: args.contact_info,
-                            lead_score: args.lead_score,
-                            budget: args.budget,
-                            authority: args.authority,
-                            need: args.need,
-                            timeline: args.timeline,
-                            schedule_meeting_at: args.schedule_meeting_at,
-                            custom_fields: customFields,
-                          }),
-                        },
-                      );
+                      const leadPayload = {
+                        lead_name: args.lead_name,
+                        contact_info: args.contact_info,
+                        lead_score: args.lead_score,
+                        budget: args.budget,
+                        authority: args.authority,
+                        need: args.need,
+                        timeline: args.timeline,
+                        schedule_meeting_at: args.schedule_meeting_at,
+                        custom_fields: crmCustomFields,
+                      };
 
-                      const result = await response.json();
-                      if (!response.ok) {
-                        throw new Error(result?.error || "Lead sync failed");
+                      if (typeof onLogToCrm === "function") {
+                        // Guest mode: delegate to caller-supplied handler
+                        await onLogToCrm(leadPayload);
+                      } else {
+                        // Authenticated mode: POST to API
+                        const session = await authService.getSession();
+                        if (!session?.access_token) {
+                          throw new Error("User session is not available");
+                        }
+
+                        const response = await fetch(
+                          `/api/agents/${industry.id}/leads`,
+                          {
+                            method: "POST",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${session.access_token}`,
+                            },
+                            body: JSON.stringify(leadPayload),
+                          },
+                        );
+
+                        const result = await response.json();
+                        if (!response.ok) {
+                          throw new Error(result?.error || "Lead sync failed");
+                        }
                       }
 
                       onDataCaptured({
                         crm_sync: "Synced to Database ✅",
                       });
-                      toolResult = "Lead saved to database successfully.";
+                      toolResult = "Lead saved successfully.";
                     } catch (error) {
                       onDataCaptured({
                         crm_sync: "Lead sync failed ❌",
@@ -765,35 +778,44 @@ const VoiceSession = forwardRef(
                       toolResult = "Knowledge search query was empty.";
                     } else {
                       try {
-                        const session = await authService.getSession();
-                        if (!session?.access_token) {
-                          throw new Error("User session is not available");
-                        }
+                        if (typeof onKnowledgeSearch === "function") {
+                          // Guest mode: delegate to caller-supplied in-browser search
+                          toolResult =
+                            (await onKnowledgeSearch(query)) ||
+                            "No matching knowledge found.";
+                        } else {
+                          // Authenticated mode: POST to API
+                          const session = await authService.getSession();
+                          if (!session?.access_token) {
+                            throw new Error("User session is not available");
+                          }
 
-                        const response = await fetch(
-                          `/api/agents/${industry.id}/knowledge/search`,
-                          {
-                            method: "POST",
-                            headers: {
-                              "Content-Type": "application/json",
-                              Authorization: `Bearer ${session.access_token}`,
+                          const response = await fetch(
+                            `/api/agents/${industry.id}/knowledge/search`,
+                            {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                                Authorization: `Bearer ${session.access_token}`,
+                              },
+                              body: JSON.stringify({
+                                query,
+                                limit: 3,
+                              }),
                             },
-                            body: JSON.stringify({
-                              query,
-                              limit: 3,
-                            }),
-                          },
-                        );
-
-                        const result = await response.json();
-                        if (!response.ok) {
-                          throw new Error(
-                            result?.error || "Knowledge search failed",
                           );
-                        }
 
-                        toolResult =
-                          result?.contextText || "No matching knowledge found.";
+                          const result = await response.json();
+                          if (!response.ok) {
+                            throw new Error(
+                              result?.error || "Knowledge search failed",
+                            );
+                          }
+
+                          toolResult =
+                            result?.contextText ||
+                            "No matching knowledge found.";
+                        }
                       } catch (error) {
                         toolResult = `Knowledge search failed: ${error?.message || "Unknown error"}`;
                       }
@@ -1108,70 +1130,108 @@ const VoiceSession = forwardRef(
       }
     }, [capturedData]); // Runs whenever capturedData prop changes
     return (
-      <div className="flex flex-col items-center justify-center space-y-4 py-2">
-        <div className="relative">
-          {isActive && (
-            <div className="absolute inset-0 pulsate bg-blue-400 rounded-full blur-2xl opacity-20 -z-10" />
-          )}
-          <div
-            className={`w-32 h-32 rounded-full flex items-center justify-center transition-all duration-500 ${
-              isActive
-                ? "bg-blue-600 shadow-xl shadow-blue-300 scale-110"
-                : "bg-slate-100 hover:bg-slate-200 cursor-pointer border-2 border-slate-200"
-            }`}
-            onClick={
-              isActive
-                ? undefined
-                : () => {
-                    shouldStopRef.current = false; // reset guard on explicit user click
-                    startLiveSession();
-                  }
-            }
-          >
-            {isInitializing ? (
-              <div className="animate-spin h-8 w-8 border-4 border-blue-200 border-t-blue-600 rounded-full" />
-            ) : isActive ? (
-              <div className="flex space-x-1 items-end h-8">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div
-                    key={i}
-                    className="w-1.5 bg-white rounded-full animate-bounce"
-                    style={{
-                      animationDelay: `${i * 0.1}s`,
-                      height: `${Math.random() * 100 + 50}%`,
-                    }}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="text-4xl">🎙️</div>
+      <div className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top,rgba(78,168,255,0.14),transparent_30%),linear-gradient(180deg,rgba(37,41,52,0.96),rgba(28,31,39,0.98))] px-6 py-8 md:px-10 md:py-10">
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+
+        <div className="flex flex-col items-center justify-center space-y-5 py-2">
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <span
+              className={`dialora-chip ${isActive ? "dialora-chip-emerald" : "dialora-chip-blue"}`}
+            >
+              {isActive ? "Live call" : "Ready"}
+            </span>
+            <span className="dialora-chip">{language.name}</span>
+            {industry.usesCrmTools && (
+              <span className="dialora-chip dialora-chip-violet">
+                CRM sync enabled
+              </span>
             )}
           </div>
-        </div>
 
-        <div className="text-center px-4">
-          <h4 className="font-bold text-slate-800">
-            {isActive
-              ? `${industry.agentName} is Listening...`
-              : isInitializing
-                ? "Establishing Secure Line..."
-                : `Start Brilworks AI Voice Session`}
-          </h4>
-          <p className="text-sm text-slate-500 mt-1 max-w-xs mx-auto">
-            {isActive
-              ? `Language: ${language.name}. Syncing to Brilworks CRM.`
-              : `Expert support in multiple languages with ${industry.agentName}`}
-          </p>
-        </div>
+          <div className="relative">
+            {(isActive || isInitializing) && (
+              <div className="absolute inset-0 pulsate bg-blue-400 rounded-full blur-3xl opacity-25 -z-10 scale-125" />
+            )}
+            <button
+              type="button"
+              className={`w-40 h-40 rounded-full flex items-center justify-center transition-all duration-500 border ${
+                isActive
+                  ? "bg-blue-600 border-blue-300/40 shadow-[0_0_55px_rgba(78,168,255,0.45)] scale-110"
+                  : isInitializing
+                    ? "bg-slate-100 border-slate-200 shadow-[0_0_35px_rgba(78,168,255,0.18)]"
+                    : "bg-slate-100 hover:bg-slate-200 cursor-pointer border-slate-200 hover:border-blue-400/40"
+              }`}
+              onClick={
+                isActive
+                  ? undefined
+                  : () => {
+                      shouldStopRef.current = false;
+                      startLiveSession();
+                    }
+              }
+            >
+              {isInitializing ? (
+                <div className="animate-spin h-10 w-10 border-4 border-blue-200 border-t-blue-600 rounded-full" />
+              ) : isActive ? (
+                <div className="flex space-x-1.5 items-end h-10">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <div
+                      key={i}
+                      className="w-2 bg-white rounded-full animate-bounce"
+                      style={{
+                        animationDelay: `${i * 0.1}s`,
+                        height: `${Math.random() * 100 + 50}%`,
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-5xl">🎙️</div>
+              )}
+            </button>
+          </div>
 
-        {isActive && (
-          <button
-            onClick={stopLiveSession}
-            className="px-8 py-3 bg-red-50 text-red-600 border border-red-200 rounded-full font-bold hover:bg-red-100 transition-colors shadow-sm"
-          >
-            Disconnect Call
-          </button>
-        )}
+          <div className="text-center px-4 max-w-xl">
+            <h4 className="font-bold text-2xl text-slate-800">
+              {isActive
+                ? `${industry.agentName} is Listening...`
+                : isInitializing
+                  ? "Establishing Secure Line..."
+                  : `Start ${industry.agentName}'s voice session`}
+            </h4>
+            <p className="text-sm text-slate-500 mt-2 max-w-md mx-auto leading-6">
+              {isActive
+                ? `Language: ${language.name}. ${industry.usesCrmTools ? "Lead capture and CRM sync are active." : "Knowledge-driven conversation is active."}`
+                : `Tap the voice orb to launch a live conversation with ${industry.agentName} and start capturing customer requirements.`}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            {isActive ? (
+              <button
+                onClick={stopLiveSession}
+                className="px-8 py-3 bg-red-50 text-red-600 border border-red-200 rounded-full font-bold hover:bg-red-100 transition-colors shadow-sm"
+              >
+                Disconnect Call
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  shouldStopRef.current = false;
+                  startLiveSession();
+                }}
+                className="dialora-primary-btn px-8 py-3 rounded-full shadow-lg shadow-blue-950/40"
+              >
+                Start Call
+              </button>
+            )}
+
+            <div className="text-xs text-slate-500 px-3 py-2 rounded-full border border-slate-200 bg-slate-50">
+              Secure audio via Gemini Live
+            </div>
+          </div>
+        </div>
       </div>
     );
   },

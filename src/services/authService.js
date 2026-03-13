@@ -56,16 +56,48 @@ export const authService = {
 
   // Get current user
   async getCurrentUser() {
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser();
+    try {
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
+
+      if (error) {
+        throw error;
+      }
+
+      return user;
+    } catch (error) {
+      if (error?.name === "AuthSessionMissingError") {
+        return null;
+      }
+      throw error;
+    }
+  },
+
+  // Sign in anonymously (creates a guest session in Supabase)
+  async signInAnonymously() {
+    const { data, error } = await supabase.auth.signInAnonymously();
 
     if (error) {
       throw error;
     }
 
-    return user;
+    return data;
+  },
+
+  // Upgrade an anonymous account to a permanent account (same user_id retained)
+  async upgradeAnonymousAccount(email, password) {
+    const { data, error } = await supabase.auth.updateUser({
+      email,
+      password,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return data;
   },
 
   // Subscribe to auth state changes

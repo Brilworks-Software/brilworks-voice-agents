@@ -6,6 +6,9 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { authService } from "../../../../../services/authService";
 import { customAgentsService } from "../../../../../services/customAgentsService";
+import { useGuestMode } from "../../../../../lib/guest/GuestModeContext";
+import GuestBanner from "../../../components/GuestBanner";
+import UpgradeAccountModal from "../../../components/UpgradeAccountModal";
 import { LANGUAGES } from "../../../../components/VoiceAgents/constants";
 
 const VOICE_PERSONAS = [
@@ -33,6 +36,7 @@ export default function EditAgentPage() {
   const router = useRouter();
   const params = useParams();
   const agentId = params.id;
+  const { isGuest } = useGuestMode();
   const knowledgeFileInputRef = useRef(null);
 
   const [user, setUser] = useState(null);
@@ -44,6 +48,8 @@ export default function EditAgentPage() {
     useState(false);
   const [existingKnowledgeDocs, setExistingKnowledgeDocs] = useState([]);
   const [previewDoc, setPreviewDoc] = useState(null);
+  const [showMigrateModal, setShowMigrateModal] = useState(false);
+  const [knowledgeProgress, setKnowledgeProgress] = useState("");
 
   const [formData, setFormData] = useState({
     name: "",
@@ -229,15 +235,12 @@ export default function EditAgentPage() {
     try {
       await customAgentsService.updateAgent(agentId, formData);
 
-      // Save custom fields
       if (formData.custom_fields.length > 0) {
         try {
           const session = await authService.getSession();
-
           if (!session?.access_token) {
             throw new Error("User session is not available");
           }
-
           await fetch(`/api/agents/${agentId}/custom-fields`, {
             method: "POST",
             headers: {
@@ -308,8 +311,10 @@ export default function EditAgentPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      {isGuest && <GuestBanner onSignUp={() => setShowMigrateModal(true)} />}
+
       {/* Header */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm ring-1 ring-slate-100 p-6 md:p-7">
+      <div className="dialora-panel rounded-2xl p-6 md:p-7">
         <Link
           href="/dashboard"
           className="inline-flex items-center space-x-2 text-blue-600 hover:text-blue-700 mb-4 text-sm font-medium"
@@ -324,10 +329,16 @@ export default function EditAgentPage() {
       </div>
 
       {/* Form */}
-      <div className="bg-white rounded-2xl p-6 md:p-8 border border-slate-200 shadow-sm ring-1 ring-slate-100">
+      <div className="dialora-panel rounded-2xl p-6 md:p-8">
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
             {error}
+          </div>
+        )}
+
+        {knowledgeProgress && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm">
+            {knowledgeProgress}
           </div>
         )}
 
@@ -762,13 +773,13 @@ export default function EditAgentPage() {
             <button
               type="submit"
               disabled={isSaving}
-              className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 dialora-primary-btn py-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSaving ? "Updating Agent..." : "Update Agent"}
             </button>
             <Link
               href="/dashboard"
-              className="px-6 py-3 border border-slate-300 rounded-lg font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+              className="dialora-secondary-btn px-6 py-3 rounded-lg"
             >
               Cancel
             </Link>
@@ -778,7 +789,7 @@ export default function EditAgentPage() {
 
       {previewDoc && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl w-full max-w-5xl h-[85vh] border border-slate-200 flex flex-col">
+          <div className="dialora-panel rounded-xl w-full max-w-5xl h-[85vh] flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
               <div className="min-w-0">
                 <h3 className="text-sm font-semibold text-slate-900 truncate">
@@ -824,6 +835,11 @@ export default function EditAgentPage() {
           </div>
         </div>
       )}
+
+      <UpgradeAccountModal
+        isOpen={showMigrateModal}
+        onClose={() => setShowMigrateModal(false)}
+      />
     </div>
   );
 }

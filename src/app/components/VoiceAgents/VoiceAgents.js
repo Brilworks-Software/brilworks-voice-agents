@@ -1,10 +1,12 @@
 "use client";
 import React, { useState, useCallback, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { INDUSTRIES, LANGUAGES } from "./constants";
 import IndustryCard from "./IndustryCard";
 import VoiceSession from "./VoiceSession";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import { authService } from "../../../services/authService";
 import {
   Laptop,
   Home,
@@ -21,6 +23,7 @@ import {
   ShoppingBag,
   GraduationCap,
   UtensilsCrossed,
+  ArrowRight,
 } from "lucide-react";
 
 const iconMap = {
@@ -41,6 +44,44 @@ const iconMap = {
   UtensilsCrossed,
 };
 
+const accentMap = {
+  indigo: {
+    iconBg: "from-indigo-500/20 to-violet-500/10",
+    iconColor: "text-indigo-300",
+    chip: "dialora-chip-violet",
+  },
+  blue: {
+    iconBg: "from-sky-500/20 to-cyan-500/10",
+    iconColor: "text-sky-300",
+    chip: "dialora-chip-blue",
+  },
+  emerald: {
+    iconBg: "from-emerald-500/20 to-teal-500/10",
+    iconColor: "text-emerald-300",
+    chip: "dialora-chip-emerald",
+  },
+  pink: {
+    iconBg: "from-pink-500/20 to-rose-500/10",
+    iconColor: "text-pink-300",
+    chip: "dialora-chip-pink",
+  },
+  orange: {
+    iconBg: "from-amber-500/20 to-orange-500/10",
+    iconColor: "text-amber-300",
+    chip: "dialora-chip-amber",
+  },
+  red: {
+    iconBg: "from-rose-500/20 to-red-500/10",
+    iconColor: "text-rose-300",
+    chip: "dialora-chip-rose",
+  },
+  cyan: {
+    iconBg: "from-cyan-500/20 to-sky-500/10",
+    iconColor: "text-cyan-300",
+    chip: "dialora-chip-cyan",
+  },
+};
+
 const isValidCapturedValue = (value) =>
   value !== undefined &&
   value !== null &&
@@ -59,6 +100,7 @@ const mergeCapturedData = (previousData, incomingData) => {
 };
 
 const VoiceAgents = () => {
+  const router = useRouter();
   const [view, setView] = useState("home");
   const [selectedIndustry, setSelectedIndustry] = useState(null);
   const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0]);
@@ -218,8 +260,12 @@ const VoiceAgents = () => {
     // The agent will naturally understand the submission through the conversation context
   }, [isSessionActive, capturedData, handleCapturedData]);
 
+  const selectedIndustryAccent = selectedIndustry
+    ? accentMap[selectedIndustry.color] || accentMap.blue
+    : accentMap.blue;
+
   return (
-    <div className="flex flex-col h-screen bg-slate-50 overflow-hidden">
+    <div className="dialora-page-shell flex flex-col h-screen overflow-hidden">
       <Header
         onHomeClick={() => {
           stopSession();
@@ -233,7 +279,12 @@ const VoiceAgents = () => {
         <main className="flex-1 flex flex-col overflow-y-auto p-4 sm:p-6 md:p-8">
           {view === "home" && (
             <div className="max-w-6xl mx-auto w-full">
-              <div className="mb-8 bg-white border border-slate-200 rounded-2xl p-6 md:p-7 shadow-sm ring-1 ring-slate-100">
+              <div className="mb-8 dialora-hero-panel rounded-2xl p-6 md:p-7">
+                <div className="mb-3">
+                  <span className="dialora-chip dialora-chip-blue">
+                    Voice agents
+                  </span>
+                </div>
                 <h1 className="text-xl font-bold text-slate-800">
                   Choose a Brilworks Agent
                 </h1>
@@ -241,6 +292,29 @@ const VoiceAgents = () => {
                   Select a specialized agent to begin a high-fidelity voice
                   conversation.
                 </p>
+                <div className="mt-5 pt-5 border-t border-slate-200 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                  <p className="text-sm text-slate-600">
+                    Want your own custom agent?
+                  </p>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const session = await authService.getSession();
+                        if (!session?.user) {
+                          await authService.signInAnonymously();
+                        }
+                      } catch {
+                        /* proceed anyway — auth will be checked on the next page */
+                      }
+                      router.push("/dashboard/create-agent");
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-semibold transition-all shadow-md shadow-blue-950/30"
+                  >
+                    Create Your Own Agent — No Signup Required
+                    <ArrowRight size={15} />
+                  </button>
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {INDUSTRIES.map((industry) => (
@@ -262,35 +336,35 @@ const VoiceAgents = () => {
                     setView("home");
                     stopSession();
                   }}
-                  className="flex items-center text-slate-500 hover:text-slate-800 transition-colors w-fit group"
+                  className="dialora-secondary-btn text-sm w-fit group"
                 >
                   <span className="mr-2 group-hover:-translate-x-1 transition-transform">
                     ←
                   </span>
-                  Back to Selection
+                  <span>Back to Selection</span>
                 </button>
-                <div className="text-xs text-slate-400 bg-slate-100 px-3 py-1 rounded-full border border-slate-200 font-medium">
-                  Current Language:{" "}
-                  <span className="text-slate-700 font-bold">
+                <div className="text-xs text-slate-400 bg-slate-100 px-3 py-1 rounded-full border border-slate-200 font-medium dialora-pill inline-flex items-center gap-2">
+                  <p className="m-0">Current Language:</p>
+                  <strong className="text-slate-700 font-bold not-italic">
                     {selectedLanguage.name}
-                  </span>
+                  </strong>
                 </div>
               </div>
 
               <div className="flex flex-col md:flex-row gap-6 md:flex-1 md:min-h-0 md:overflow-hidden">
                 <div className="md:flex-1 flex flex-col space-y-4 md:min-h-0">
-                  <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-100 border border-slate-200 p-6 md:flex-1 flex flex-col md:min-h-0 md:overflow-hidden">
+                  <div className="dialora-panel rounded-2xl p-6 md:flex-1 flex flex-col md:min-h-0 md:overflow-hidden">
                     <div className="flex items-center justify-between mb-6">
                       <div className="flex items-center space-x-3">
                         <div
-                          className={`p-3 rounded-xl bg-${selectedIndustry.color}-50`}
+                          className={`dialora-icon-shell bg-gradient-to-br ${selectedIndustryAccent.iconBg}`}
                         >
                           {(() => {
                             const IconComponent =
                               iconMap[selectedIndustry.icon] || Laptop;
                             return (
                               <IconComponent
-                                className="w-8 h-8 text-slate-700"
+                                className={`w-8 h-8 ${selectedIndustryAccent.iconColor}`}
                                 strokeWidth={2}
                               />
                             );
@@ -300,7 +374,9 @@ const VoiceAgents = () => {
                           <h2 className="text-lg font-bold text-slate-800">
                             {selectedIndustry.name}
                           </h2>
-                          <p className="text-sm text-slate-500">
+                          <p
+                            className={`text-sm ${selectedIndustryAccent.chip} inline-flex mt-1 px-2.5 py-1 rounded-full`}
+                          >
                             Agent: {selectedIndustry.agentName}
                           </p>
                         </div>
@@ -337,14 +413,14 @@ const VoiceAgents = () => {
                       ) : (
                         transcriptionHistory.map((msg, i) => (
                           <div
-                            key={i}
+                            key={`${msg.timestamp || "t"}-${msg.role}-${i}`}
                             className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
                           >
                             <div
                               className={`max-w-[80%] rounded-2xl p-3 text-sm shadow-sm ${
                                 msg.role === "user"
                                   ? "bg-blue-600 text-white rounded-tr-none"
-                                  : "bg-white text-slate-800 border border-slate-200 rounded-tl-none"
+                                  : "bg-slate-50 text-slate-800 border border-slate-200 rounded-tl-none"
                               }`}
                             >
                               {msg.text}

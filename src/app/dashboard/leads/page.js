@@ -12,11 +12,15 @@ import {
   Calendar,
 } from "lucide-react";
 import { authService } from "../../../services/authService";
+import { useGuestMode } from "../../../lib/guest/GuestModeContext";
+import GuestBanner from "../components/GuestBanner";
+import UpgradeAccountModal from "../components/UpgradeAccountModal";
 
 const PAGE_SIZE = 10;
 
 export default function LeadsPage() {
   const router = useRouter();
+  const { isGuest } = useGuestMode();
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState(null);
@@ -29,6 +33,7 @@ export default function LeadsPage() {
     offset: 0,
   });
   const [currentPage, setCurrentPage] = useState(1);
+  const [showMigrateModal, setShowMigrateModal] = useState(false);
 
   const getAuthHeaders = async () => {
     const session = await authService.getSession();
@@ -192,7 +197,9 @@ export default function LeadsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-7 shadow-sm ring-1 ring-slate-100">
+      {isGuest && <GuestBanner onSignUp={() => setShowMigrateModal(true)} />}
+
+      <div className="dialora-panel rounded-2xl p-6 md:p-7">
         <Link
           href="/dashboard"
           className="inline-flex items-center space-x-2 text-slate-600 hover:text-slate-900 mb-3 w-fit text-sm font-medium"
@@ -210,7 +217,7 @@ export default function LeadsPage() {
         {/* Statistics Cards */}
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm ring-1 ring-slate-100">
+            <div className="dialora-panel dialora-glow-card rounded-xl p-6 border-sky-400/20">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-600 mb-1">Total Leads</p>
@@ -218,25 +225,25 @@ export default function LeadsPage() {
                     {stats.total}
                   </p>
                 </div>
-                <div className="bg-blue-100 rounded-full p-3">
+                <div className="bg-gradient-to-br from-sky-500/20 to-cyan-500/10 rounded-full p-3 border border-sky-400/20">
                   <Users className="w-6 h-6 text-blue-600" />
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm ring-1 ring-slate-100">
+            <div className="dialora-panel dialora-glow-card rounded-xl p-6 border-rose-400/20">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-600 mb-1">Hot Leads</p>
                   <p className="text-xl font-bold text-red-600">{stats.hot}</p>
                 </div>
-                <div className="bg-red-100 rounded-full p-3">
+                <div className="bg-gradient-to-br from-rose-500/20 to-red-500/10 rounded-full p-3 border border-rose-400/20">
                   <TrendingUp className="w-6 h-6 text-red-600" />
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm ring-1 ring-slate-100">
+            <div className="dialora-panel dialora-glow-card rounded-xl p-6 border-amber-400/20">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-600 mb-1">Warm Leads</p>
@@ -244,13 +251,13 @@ export default function LeadsPage() {
                     {stats.warm}
                   </p>
                 </div>
-                <div className="bg-orange-100 rounded-full p-3">
+                <div className="bg-gradient-to-br from-amber-500/20 to-orange-500/10 rounded-full p-3 border border-amber-400/20">
                   <TrendingUp className="w-6 h-6 text-orange-600" />
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm ring-1 ring-slate-100">
+            <div className="dialora-panel dialora-glow-card rounded-xl p-6 border-cyan-400/20">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-600 mb-1">Cold Leads</p>
@@ -258,7 +265,7 @@ export default function LeadsPage() {
                     {stats.cold}
                   </p>
                 </div>
-                <div className="bg-blue-100 rounded-full p-3">
+                <div className="bg-gradient-to-br from-cyan-500/20 to-sky-500/10 rounded-full p-3 border border-cyan-400/20">
                   <TrendingUp className="w-6 h-6 text-blue-600" />
                 </div>
               </div>
@@ -268,7 +275,7 @@ export default function LeadsPage() {
 
         {/* Agent Filter */}
         {agents.length > 0 && (
-          <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm ring-1 ring-slate-100 mb-6">
+          <div className="dialora-panel rounded-xl p-6 mb-6">
             <h2 className="text-md font-semibold text-slate-900 mb-4">
               Filter by Agent
             </h2>
@@ -281,14 +288,12 @@ export default function LeadsPage() {
                     router.push("/auth/login");
                     return;
                   }
-
-                  // Reload all leads
                   await loadStatsLeads(authHeaders, 1);
                 }}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                className={`px-4 py-2 rounded-full font-medium transition-colors ${
                   selectedAgent === null
-                    ? "bg-blue-600 text-white"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    ? "dialora-chip dialora-chip-blue"
+                    : "dialora-chip"
                 }`}
               >
                 All Agents
@@ -296,11 +301,13 @@ export default function LeadsPage() {
               {agents.map((agent) => (
                 <button
                   key={agent.id}
-                  onClick={() => loadLeadsForAgent(agent.id)}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  onClick={() => {
+                    loadLeadsForAgent(agent.id);
+                  }}
+                  className={`px-4 py-2 rounded-full font-medium transition-colors ${
                     selectedAgent === agent.id
-                      ? "bg-blue-600 text-white"
-                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                      ? "dialora-chip dialora-chip-violet"
+                      : "dialora-chip"
                   }`}
                 >
                   {agent.name}
@@ -311,7 +318,7 @@ export default function LeadsPage() {
         )}
 
         {/* Leads Table */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm ring-1 ring-slate-100 overflow-hidden">
+        <div className="dialora-panel rounded-xl overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200">
             <h2 className="text-lg font-semibold text-slate-900">
               Recent Leads
@@ -458,7 +465,7 @@ export default function LeadsPage() {
                   type="button"
                   onClick={() => handlePageChange(currentPage - 1)}
                   disabled={currentPage <= 1}
-                  className="px-3 py-2 text-sm rounded-lg border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="dialora-secondary-btn px-3 py-2 text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Previous
                 </button>
@@ -469,7 +476,7 @@ export default function LeadsPage() {
                   type="button"
                   onClick={() => handlePageChange(currentPage + 1)}
                   disabled={currentPage >= totalPages}
-                  className="px-3 py-2 text-sm rounded-lg border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="dialora-secondary-btn px-3 py-2 text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Next
                 </button>
@@ -478,6 +485,11 @@ export default function LeadsPage() {
           )}
         </div>
       </div>
+
+      <UpgradeAccountModal
+        isOpen={showMigrateModal}
+        onClose={() => setShowMigrateModal(false)}
+      />
     </div>
   );
 }
