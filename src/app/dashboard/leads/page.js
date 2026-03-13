@@ -12,11 +12,15 @@ import {
   Calendar,
 } from "lucide-react";
 import { authService } from "../../../services/authService";
+import { useGuestMode } from "../../../lib/guest/GuestModeContext";
+import GuestBanner from "../components/GuestBanner";
+import UpgradeAccountModal from "../components/UpgradeAccountModal";
 
 const PAGE_SIZE = 10;
 
 export default function LeadsPage() {
   const router = useRouter();
+  const { isGuest } = useGuestMode();
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState(null);
@@ -29,6 +33,7 @@ export default function LeadsPage() {
     offset: 0,
   });
   const [currentPage, setCurrentPage] = useState(1);
+  const [showMigrateModal, setShowMigrateModal] = useState(false);
 
   const getAuthHeaders = async () => {
     const session = await authService.getSession();
@@ -192,6 +197,8 @@ export default function LeadsPage() {
 
   return (
     <div className="space-y-6">
+      {isGuest && <GuestBanner onSignUp={() => setShowMigrateModal(true)} />}
+
       <div className="dialora-panel rounded-2xl p-6 md:p-7">
         <Link
           href="/dashboard"
@@ -281,8 +288,6 @@ export default function LeadsPage() {
                     router.push("/auth/login");
                     return;
                   }
-
-                  // Reload all leads
                   await loadStatsLeads(authHeaders, 1);
                 }}
                 className={`px-4 py-2 rounded-full font-medium transition-colors ${
@@ -296,7 +301,9 @@ export default function LeadsPage() {
               {agents.map((agent) => (
                 <button
                   key={agent.id}
-                  onClick={() => loadLeadsForAgent(agent.id)}
+                  onClick={() => {
+                    loadLeadsForAgent(agent.id);
+                  }}
                   className={`px-4 py-2 rounded-full font-medium transition-colors ${
                     selectedAgent === agent.id
                       ? "dialora-chip dialora-chip-violet"
@@ -478,6 +485,11 @@ export default function LeadsPage() {
           )}
         </div>
       </div>
+
+      <UpgradeAccountModal
+        isOpen={showMigrateModal}
+        onClose={() => setShowMigrateModal(false)}
+      />
     </div>
   );
 }

@@ -270,10 +270,6 @@ table thead {
   background-color: #262b36 !important;
 }
 
-img[src="/logo-black.svg"] {
-  filter: brightness(0) invert(1);
-}
-
 /* Voice Agents Animations */
 @keyframes pulsate {
   0%,

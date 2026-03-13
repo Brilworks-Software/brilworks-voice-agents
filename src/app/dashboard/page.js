@@ -6,6 +6,9 @@ import Link from "next/link";
 import { Trash2, Edit2, Play, Plus, Users, Sparkles } from "lucide-react";
 import { authService } from "../../services/authService";
 import { customAgentsService } from "../../services/customAgentsService";
+import { useGuestMode } from "../../lib/guest/GuestModeContext";
+import GuestBanner from "./components/GuestBanner";
+import UpgradeAccountModal from "./components/UpgradeAccountModal";
 
 const accentByIndustry = {
   healthcare: {
@@ -52,10 +55,12 @@ const getAccent = (industry = "") => {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { isGuest } = useGuestMode();
   const [agents, setAgents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [isDeleting, setIsDeleting] = useState(null);
+  const [showMigrateModal, setShowMigrateModal] = useState(false);
 
   useEffect(() => {
     const checkAuthAndLoadAgents = async () => {
@@ -65,28 +70,21 @@ export default function DashboardPage() {
           router.push("/auth/login");
           return;
         }
+
         setUser(currentUser);
-        await loadAgents();
+        setAgents(await customAgentsService.getUserAgents());
       } catch (error) {
         console.error("Error checking auth:", error);
-        router.push("/auth/login");
+        if (!isGuest) {
+          router.push("/auth/login");
+        }
+      } finally {
+        setIsLoading(false);
       }
     };
 
     checkAuthAndLoadAgents();
-  }, [router]);
-
-  const loadAgents = async () => {
-    try {
-      setIsLoading(true);
-      const userAgents = await customAgentsService.getUserAgents();
-      setAgents(userAgents);
-    } catch (error) {
-      console.error("Error loading agents:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [router, isGuest]);
 
   const handleDelete = async (agentId) => {
     if (!confirm("Are you sure you want to delete this agent?")) {
@@ -95,8 +93,10 @@ export default function DashboardPage() {
 
     try {
       setIsDeleting(agentId);
+
       await customAgentsService.deleteAgent(agentId);
-      setAgents(agents.filter((agent) => agent.id !== agentId));
+
+      setAgents((prev) => prev.filter((agent) => agent.id !== agentId));
     } catch (error) {
       console.error("Error deleting agent:", error);
       alert("Failed to delete agent");
@@ -235,10 +235,15 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {isGuest && <GuestBanner onSignUp={() => setShowMigrateModal(true)} />}
+
       <div className="dialora-panel rounded-2xl p-6 md:p-7">
         <h1 className="text-xl font-bold text-slate-800">Your Agents</h1>
-        <p className="text-slate-500 mt-2">Manage your custom voice agents</p>
+        <p className="text-slate-500 mt-2">
+          {isGuest
+            ? "Manage your guest agents"
+            : "Manage your custom voice agents"}
+        </p>
       </div>
 
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-end gap-4">
@@ -260,8 +265,12 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Agents Grid */}
       {renderContent}
+
+      <UpgradeAccountModal
+        isOpen={showMigrateModal}
+        onClose={() => setShowMigrateModal(false)}
+      />
     </div>
   );
 }

@@ -6,6 +6,9 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { authService } from "../../../services/authService";
 import { customAgentsService } from "../../../services/customAgentsService";
+import { useGuestMode } from "../../../lib/guest/GuestModeContext";
+import GuestBanner from "../components/GuestBanner";
+import UpgradeAccountModal from "../components/UpgradeAccountModal";
 import { LANGUAGES } from "../../components/VoiceAgents/constants";
 
 const VOICE_PERSONAS = [
@@ -31,11 +34,13 @@ const INDUSTRIES = [
 
 export default function CreateAgentPage() {
   const router = useRouter();
+  const { isGuest } = useGuestMode();
   const knowledgeFileInputRef = useRef(null);
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  const [showMigrateModal, setShowMigrateModal] = useState(false);
   const [knowledgeFiles, setKnowledgeFiles] = useState([]);
   const [isDraggingKnowledgeFiles, setIsDraggingKnowledgeFiles] =
     useState(false);
@@ -58,14 +63,46 @@ export default function CreateAgentPage() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const currentUser = await authService.getCurrentUser();
+        let currentUser = null;
+        const existingSession = await authService.getSession();
+        if (existingSession?.user) {
+          currentUser = existingSession.user;
+        } else {
+          const anonymousResult = await authService.signInAnonymously();
+          currentUser =
+            anonymousResult?.user || anonymousResult?.session?.user || null;
+
+          if (!currentUser) {
+            const refreshedSession = await authService.getSession();
+            currentUser = refreshedSession?.user || null;
+          }
+        }
+
+        if (!currentUser) {
+          currentUser = await authService.getCurrentUser();
+        }
+
         if (!currentUser) {
           router.push("/auth/login");
           return;
         }
+
         setUser(currentUser);
       } catch (error) {
         console.error("Error checking auth:", error);
+        try {
+          const anonymousResult = await authService.signInAnonymously();
+          const fallbackUser =
+            anonymousResult?.user || anonymousResult?.session?.user || null;
+
+          if (fallbackUser) {
+            setUser(fallbackUser);
+            return;
+          }
+        } catch {
+          /* noop */
+        }
+
         router.push("/auth/login");
       } finally {
         setIsLoading(false);
@@ -132,7 +169,6 @@ export default function CreateAgentPage() {
     e.preventDefault();
     setError("");
 
-    // Validation
     if (!formData.name.trim()) {
       setError("Agent name is required");
       return;
@@ -150,7 +186,6 @@ export default function CreateAgentPage() {
       return;
     }
 
-    // Validate custom fields
     for (let i = 0; i < formData.custom_fields.length; i++) {
       const field = formData.custom_fields[i];
       if (!field.field_name.trim()) {
@@ -164,11 +199,9 @@ export default function CreateAgentPage() {
     try {
       const agent = await customAgentsService.createAgent(formData);
 
-      // If custom fields are defined, save them
       if (formData.custom_fields.length > 0 && agent.id) {
         try {
           const session = await authService.getSession();
-
           if (!session?.access_token) {
             throw new Error("User session is not available");
           }
@@ -246,6 +279,8 @@ export default function CreateAgentPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      {isGuest && <GuestBanner onSignUp={() => setShowMigrateModal(true)} />}
+
       {/* Header */}
       <div className="dialora-panel rounded-2xl p-6 md:p-7">
         <Link
@@ -636,6 +671,11 @@ export default function CreateAgentPage() {
           </div>
         </form>
       </div>
+
+      <UpgradeAccountModal
+        isOpen={showMigrateModal}
+        onClose={() => setShowMigrateModal(false)}
+      />
     </div>
   );
 }

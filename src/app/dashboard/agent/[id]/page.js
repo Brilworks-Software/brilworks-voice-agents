@@ -15,6 +15,9 @@ import {
 } from "lucide-react";
 import { authService } from "../../../../services/authService";
 import { customAgentsService } from "../../../../services/customAgentsService";
+import { useGuestMode } from "../../../../lib/guest/GuestModeContext";
+import GuestBanner from "../../components/GuestBanner";
+import UpgradeAccountModal from "../../components/UpgradeAccountModal";
 import VoiceSession from "../../../components/VoiceAgents/VoiceSession";
 
 const getAccentTheme = (industry = "") => {
@@ -126,6 +129,7 @@ export default function LaunchAgentPage() {
   const router = useRouter();
   const params = useParams();
   const agentId = params.id;
+  const { isGuest } = useGuestMode();
 
   const [user, setUser] = useState(null);
   const [agent, setAgent] = useState(null);
@@ -136,11 +140,19 @@ export default function LaunchAgentPage() {
   const [capturedData, setCapturedData] = useState({});
   const [conversationLog, setConversationLog] = useState([]);
   const [isSubmittingLead, setIsSubmittingLead] = useState(false);
+  const [showMigrateModal, setShowMigrateModal] = useState(false);
 
   const voiceSessionRef = useRef(null);
 
+
   useEffect(() => {
     const checkAuthAndLoadAgent = async () => {
+      if (!agentId) {
+        setIsLoading(false);
+        router.push("/dashboard");
+        return;
+      }
+
       try {
         const currentUser = await authService.getCurrentUser();
         if (!currentUser) {
@@ -154,22 +166,16 @@ export default function LaunchAgentPage() {
           router.push("/dashboard");
           return;
         }
+
         setAgent(agentData);
 
         // Load custom fields
         try {
           const session = await authService.getSession();
-
-          if (!session?.access_token) {
-            throw new Error("User session is not available");
-          }
-
+          if (!session?.access_token) throw new Error("No session");
           const response = await fetch(`/api/agents/${agentId}/custom-fields`, {
-            headers: {
-              Authorization: `Bearer ${session.access_token}`,
-            },
+            headers: { Authorization: `Bearer ${session.access_token}` },
           });
-
           if (response.ok) {
             const data = await response.json();
             setCustomFields(data.customFields || []);
@@ -279,11 +285,6 @@ export default function LaunchAgentPage() {
     );
 
     try {
-      const session = await authService.getSession();
-      if (!session?.access_token) {
-        throw new Error("User session is not available");
-      }
-
       const leadName = getFieldValue("contact_name") || "Anonymous";
       const email = getFieldValue("email") || "";
       const phone = getFieldValue("phone") || "";
@@ -323,23 +324,32 @@ export default function LaunchAgentPage() {
         {},
       );
 
+      const leadPayload = {
+        lead_name: leadName,
+        email,
+        phone,
+        contact_info: contactInfo,
+        lead_score: getFieldValue("lead_score") || null,
+        budget: getFieldValue("budget") || null,
+        authority: getFieldValue("authority") || null,
+        need: getFieldValue("need") || null,
+        timeline: getFieldValue("timeline") || null,
+        schedule_meeting_at: getFieldValue("schedule_meeting_at") || null,
+        custom_fields: customFieldsPayload,
+      };
+
+      const session = await authService.getSession();
+      if (!session?.access_token) {
+        throw new Error("User session is not available");
+      }
+
       const response = await fetch(`/api/agents/${agentId}/leads`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({
-          lead_name: leadName,
-          contact_info: contactInfo,
-          lead_score: getFieldValue("lead_score") || null,
-          budget: getFieldValue("budget") || null,
-          authority: getFieldValue("authority") || null,
-          need: getFieldValue("need") || null,
-          timeline: getFieldValue("timeline") || null,
-          schedule_meeting_at: getFieldValue("schedule_meeting_at") || null,
-          custom_fields: customFieldsPayload,
-        }),
+        body: JSON.stringify(leadPayload),
       });
 
       const result = await response.json();
@@ -363,14 +373,19 @@ export default function LaunchAgentPage() {
     } finally {
       setIsSubmittingLead(false);
     }
-  }, [agentId, capturedData, getFieldValue, isSubmittingLead]);
+  }, [
+    agentId,
+    capturedData,
+    getFieldValue,
+    isSubmittingLead,
+  ]);
 
   const handleEndSession = async () => {
     if (voiceSessionRef.current) {
       // Note: VoiceSession will handle cleanup
     }
 
-    // Save conversation to database
+    // Save conversation
     try {
       if (Object.keys(capturedData).length > 0 || conversationLog.length > 0) {
         await customAgentsService.saveConversation({
@@ -399,6 +414,10 @@ export default function LaunchAgentPage() {
 
   return (
     <div className="space-y-6">
+      {isGuest && (
+        <GuestBanner onSignUp={() => setShowMigrateModal(true)} />
+      )}
+
       <div
         className={`dialora-hero-panel rounded-2xl p-5 md:p-6 ${accent.panelBorder}`}
       >
@@ -503,6 +522,8 @@ export default function LaunchAgentPage() {
               capturedData={capturedData}
               customFields={customFields}
               enableKnowledgeBase
+              onLogToCrm={null}
+              onKnowledgeSearch={null}
             />
           </section>
 
@@ -711,6 +732,11 @@ export default function LaunchAgentPage() {
           </section>
         </aside>
       </div>
+
+      <UpgradeAccountModal
+        isOpen={showMigrateModal}
+        onClose={() => setShowMigrateModal(false)}
+      />
     </div>
   );
 }

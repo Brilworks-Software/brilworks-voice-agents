@@ -49,7 +49,7 @@ export default function SignupPage() {
         <div className="dialora-panel rounded-2xl p-8">
           <div className="mb-8 flex justify-center">
             <Image
-              src="/logo-black.svg"
+              src="/logo-white.svg"
               alt="Brilworks Logo"
               width={155}
               height={46}

@@ -6,6 +6,9 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { authService } from "../../../../../services/authService";
 import { customAgentsService } from "../../../../../services/customAgentsService";
+import { useGuestMode } from "../../../../../lib/guest/GuestModeContext";
+import GuestBanner from "../../../components/GuestBanner";
+import UpgradeAccountModal from "../../../components/UpgradeAccountModal";
 import { LANGUAGES } from "../../../../components/VoiceAgents/constants";
 
 const VOICE_PERSONAS = [
@@ -33,6 +36,7 @@ export default function EditAgentPage() {
   const router = useRouter();
   const params = useParams();
   const agentId = params.id;
+  const { isGuest } = useGuestMode();
   const knowledgeFileInputRef = useRef(null);
 
   const [user, setUser] = useState(null);
@@ -44,6 +48,8 @@ export default function EditAgentPage() {
     useState(false);
   const [existingKnowledgeDocs, setExistingKnowledgeDocs] = useState([]);
   const [previewDoc, setPreviewDoc] = useState(null);
+  const [showMigrateModal, setShowMigrateModal] = useState(false);
+  const [knowledgeProgress, setKnowledgeProgress] = useState("");
 
   const [formData, setFormData] = useState({
     name: "",
@@ -229,15 +235,12 @@ export default function EditAgentPage() {
     try {
       await customAgentsService.updateAgent(agentId, formData);
 
-      // Save custom fields
       if (formData.custom_fields.length > 0) {
         try {
           const session = await authService.getSession();
-
           if (!session?.access_token) {
             throw new Error("User session is not available");
           }
-
           await fetch(`/api/agents/${agentId}/custom-fields`, {
             method: "POST",
             headers: {
@@ -308,6 +311,8 @@ export default function EditAgentPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      {isGuest && <GuestBanner onSignUp={() => setShowMigrateModal(true)} />}
+
       {/* Header */}
       <div className="dialora-panel rounded-2xl p-6 md:p-7">
         <Link
@@ -328,6 +333,12 @@ export default function EditAgentPage() {
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
             {error}
+          </div>
+        )}
+
+        {knowledgeProgress && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm">
+            {knowledgeProgress}
           </div>
         )}
 
@@ -824,6 +835,11 @@ export default function EditAgentPage() {
           </div>
         </div>
       )}
+
+      <UpgradeAccountModal
+        isOpen={showMigrateModal}
+        onClose={() => setShowMigrateModal(false)}
+      />
     </div>
   );
 }

@@ -26,6 +26,11 @@ const VoiceSession = forwardRef(
       // customFields is optional — existing 15 agents don't pass it and get default []
       customFields = [],
       enableKnowledgeBase = false,
+      // Guest-mode callback overrides — when provided these replace the API fetch calls
+      // so guest users never hit authenticated endpoints.
+      // null means: use the default authenticated fetch behaviour.
+      onLogToCrm = null,
+      onKnowledgeSearch = null,
     },
     ref,
   ) => {
@@ -683,11 +688,6 @@ const VoiceSession = forwardRef(
                     });
 
                     try {
-                      const session = await authService.getSession();
-                      if (!session?.access_token) {
-                        throw new Error("User session is not available");
-                      }
-
                       const standardLeadKeys = new Set([
                         "lead_name",
                         "contact_info",
@@ -702,7 +702,7 @@ const VoiceSession = forwardRef(
                         "phone",
                       ]);
 
-                      const customFields = Object.entries(args || {}).reduce(
+                      const crmCustomFields = Object.entries(args || {}).reduce(
                         (acc, [key, value]) => {
                           if (!standardLeadKeys.has(key)) {
                             acc[key] = value;
@@ -712,37 +712,50 @@ const VoiceSession = forwardRef(
                         {},
                       );
 
-                      const response = await fetch(
-                        `/api/agents/${industry.id}/leads`,
-                        {
-                          method: "POST",
-                          headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${session.access_token}`,
-                          },
-                          body: JSON.stringify({
-                            lead_name: args.lead_name,
-                            contact_info: args.contact_info,
-                            lead_score: args.lead_score,
-                            budget: args.budget,
-                            authority: args.authority,
-                            need: args.need,
-                            timeline: args.timeline,
-                            schedule_meeting_at: args.schedule_meeting_at,
-                            custom_fields: customFields,
-                          }),
-                        },
-                      );
+                      const leadPayload = {
+                        lead_name: args.lead_name,
+                        contact_info: args.contact_info,
+                        lead_score: args.lead_score,
+                        budget: args.budget,
+                        authority: args.authority,
+                        need: args.need,
+                        timeline: args.timeline,
+                        schedule_meeting_at: args.schedule_meeting_at,
+                        custom_fields: crmCustomFields,
+                      };
 
-                      const result = await response.json();
-                      if (!response.ok) {
-                        throw new Error(result?.error || "Lead sync failed");
+                      if (typeof onLogToCrm === "function") {
+                        // Guest mode: delegate to caller-supplied handler
+                        await onLogToCrm(leadPayload);
+                      } else {
+                        // Authenticated mode: POST to API
+                        const session = await authService.getSession();
+                        if (!session?.access_token) {
+                          throw new Error("User session is not available");
+                        }
+
+                        const response = await fetch(
+                          `/api/agents/${industry.id}/leads`,
+                          {
+                            method: "POST",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${session.access_token}`,
+                            },
+                            body: JSON.stringify(leadPayload),
+                          },
+                        );
+
+                        const result = await response.json();
+                        if (!response.ok) {
+                          throw new Error(result?.error || "Lead sync failed");
+                        }
                       }
 
                       onDataCaptured({
                         crm_sync: "Synced to Database ✅",
                       });
-                      toolResult = "Lead saved to database successfully.";
+                      toolResult = "Lead saved successfully.";
                     } catch (error) {
                       onDataCaptured({
                         crm_sync: "Lead sync failed ❌",
@@ -765,35 +778,44 @@ const VoiceSession = forwardRef(
                       toolResult = "Knowledge search query was empty.";
                     } else {
                       try {
-                        const session = await authService.getSession();
-                        if (!session?.access_token) {
-                          throw new Error("User session is not available");
-                        }
+                        if (typeof onKnowledgeSearch === "function") {
+                          // Guest mode: delegate to caller-supplied in-browser search
+                          toolResult =
+                            (await onKnowledgeSearch(query)) ||
+                            "No matching knowledge found.";
+                        } else {
+                          // Authenticated mode: POST to API
+                          const session = await authService.getSession();
+                          if (!session?.access_token) {
+                            throw new Error("User session is not available");
+                          }
 
-                        const response = await fetch(
-                          `/api/agents/${industry.id}/knowledge/search`,
-                          {
-                            method: "POST",
-                            headers: {
-                              "Content-Type": "application/json",
-                              Authorization: `Bearer ${session.access_token}`,
+                          const response = await fetch(
+                            `/api/agents/${industry.id}/knowledge/search`,
+                            {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                                Authorization: `Bearer ${session.access_token}`,
+                              },
+                              body: JSON.stringify({
+                                query,
+                                limit: 3,
+                              }),
                             },
-                            body: JSON.stringify({
-                              query,
-                              limit: 3,
-                            }),
-                          },
-                        );
-
-                        const result = await response.json();
-                        if (!response.ok) {
-                          throw new Error(
-                            result?.error || "Knowledge search failed",
                           );
-                        }
 
-                        toolResult =
-                          result?.contextText || "No matching knowledge found.";
+                          const result = await response.json();
+                          if (!response.ok) {
+                            throw new Error(
+                              result?.error || "Knowledge search failed",
+                            );
+                          }
+
+                          toolResult =
+                            result?.contextText ||
+                            "No matching knowledge found.";
+                        }
                       } catch (error) {
                         toolResult = `Knowledge search failed: ${error?.message || "Unknown error"}`;
                       }

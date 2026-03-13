@@ -52,7 +52,7 @@ const Header = ({ onHomeClick, selectedLanguage, onLanguageChange }) => {
         <div className="header_logo">
           <Link href="/">
             <Image
-              src="/logo-black.svg"
+              src="/logo-white.svg"
               alt="Brilworks Logo"
               width={155}
               height={46}

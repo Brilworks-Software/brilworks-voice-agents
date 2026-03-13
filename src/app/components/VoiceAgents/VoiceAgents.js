@@ -1,10 +1,12 @@
 "use client";
 import React, { useState, useCallback, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { INDUSTRIES, LANGUAGES } from "./constants";
 import IndustryCard from "./IndustryCard";
 import VoiceSession from "./VoiceSession";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import { authService } from "../../../services/authService";
 import {
   Laptop,
   Home,
@@ -21,6 +23,7 @@ import {
   ShoppingBag,
   GraduationCap,
   UtensilsCrossed,
+  ArrowRight,
 } from "lucide-react";
 
 const iconMap = {
@@ -97,6 +100,7 @@ const mergeCapturedData = (previousData, incomingData) => {
 };
 
 const VoiceAgents = () => {
+  const router = useRouter();
   const [view, setView] = useState("home");
   const [selectedIndustry, setSelectedIndustry] = useState(null);
   const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0]);
@@ -288,6 +292,29 @@ const VoiceAgents = () => {
                   Select a specialized agent to begin a high-fidelity voice
                   conversation.
                 </p>
+                <div className="mt-5 pt-5 border-t border-slate-200 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                  <p className="text-sm text-slate-600">
+                    Want your own custom agent?
+                  </p>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const session = await authService.getSession();
+                        if (!session?.user) {
+                          await authService.signInAnonymously();
+                        }
+                      } catch {
+                        /* proceed anyway — auth will be checked on the next page */
+                      }
+                      router.push("/dashboard/create-agent");
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-semibold transition-all shadow-md shadow-blue-950/30"
+                  >
+                    Create Your Own Agent — No Signup Required
+                    <ArrowRight size={15} />
+                  </button>
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {INDUSTRIES.map((industry) => (
