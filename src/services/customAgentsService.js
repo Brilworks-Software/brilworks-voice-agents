@@ -6,40 +6,42 @@ export const customAgentsService = {
   // Create a new custom agent
   async createAgent(agentData) {
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
+      data: { session },
+    } = await supabase.auth.getSession();
 
-    if (!user) {
-      throw new Error("User not authenticated");
+    if (!session?.access_token) {
+      throw new Error("User session is not available");
     }
 
-    const { data, error } = await supabase
-      .from("voice_agents")
-      .insert([
-        {
-          user_id: user.id,
-          name: agentData.name,
-          industry: agentData.industry,
-          voice_persona: agentData.voice_persona,
-          system_prompt: agentData.system_prompt,
-          language: agentData.language,
-          tools_enabled: agentData.tools_enabled || {
-            capture_information: true,
-            log_to_crm: true,
-          },
-          require_customer_info: agentData.require_customer_info || false,
-          collect_bant_info: agentData.collect_bant_info || false,
-          created_at: new Date(),
-          updated_at: new Date(),
+    const response = await fetch("/api/agents", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        name: agentData.name,
+        industry: agentData.industry,
+        voice_persona: agentData.voice_persona,
+        system_prompt: agentData.system_prompt,
+        language: agentData.language,
+        tools_enabled: agentData.tools_enabled || {
+          capture_information: true,
+          log_to_crm: true,
         },
-      ])
-      .select();
+        require_customer_info: agentData.require_customer_info || false,
+        collect_bant_info: agentData.collect_bant_info || false,
+        custom_fields: agentData.custom_fields || [],
+      }),
+    });
 
-    if (error) {
-      throw error;
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result?.error || "Failed to create agent");
     }
 
-    return data?.[0];
+    return result.agent;
   },
 
   // Update an existing agent

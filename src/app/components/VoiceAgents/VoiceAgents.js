@@ -6,6 +6,7 @@ import IndustryCard from "./IndustryCard";
 import VoiceSession from "./VoiceSession";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import GuestBanner from "../../dashboard/components/GuestBanner";
 import { authService } from "../../../services/authService";
 import {
   Laptop,
@@ -108,6 +109,8 @@ const VoiceAgents = () => {
   const [transcriptionHistory, setTranscriptionHistory] = useState([]);
   const [capturedData, setCapturedData] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoggedInUser, setIsLoggedInUser] = useState(false);
+  const [isGuestUser, setIsGuestUser] = useState(false);
 
   const voiceSessionRef = useRef(null);
 
@@ -127,6 +130,37 @@ const VoiceAgents = () => {
   useEffect(() => {
     localStorage.setItem("brilworks_lang", selectedLanguage.code);
   }, [selectedLanguage]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const updateAuthState = async () => {
+      try {
+        const session = await authService.getSession();
+        const user = session?.user;
+        if (!isMounted) return;
+        setIsLoggedInUser(Boolean(user && user.is_anonymous !== true));
+        setIsGuestUser(Boolean(user?.is_anonymous === true));
+      } catch {
+        if (!isMounted) return;
+        setIsLoggedInUser(false);
+        setIsGuestUser(false);
+      }
+    };
+
+    updateAuthState();
+
+    const subscription = authService.onAuthStateChange((_event, session) => {
+      const user = session?.user;
+      setIsLoggedInUser(Boolean(user && user.is_anonymous !== true));
+      setIsGuestUser(Boolean(user?.is_anonymous === true));
+    });
+
+    return () => {
+      isMounted = false;
+      subscription?.unsubscribe();
+    };
+  }, []);
 
   const handleSelectIndustry = (industry) => {
     setSelectedIndustry(industry);
@@ -279,6 +313,12 @@ const VoiceAgents = () => {
         <main className="flex-1 flex flex-col overflow-y-auto p-4 sm:p-6 md:p-8">
           {view === "home" && (
             <div className="max-w-6xl mx-auto w-full">
+              {isGuestUser && (
+                <div className="mb-4">
+                  <GuestBanner onSignUp={() => router.push("/auth/signup")} />
+                </div>
+              )}
+
               <div className="mb-8 dialora-hero-panel rounded-2xl p-6 md:p-7">
                 <div className="mb-3">
                   <span className="dialora-chip dialora-chip-blue">
@@ -311,7 +351,9 @@ const VoiceAgents = () => {
                     }}
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-semibold transition-all shadow-md shadow-blue-950/30"
                   >
-                    Create Your Own Agent — No Signup Required
+                    {isLoggedInUser
+                      ? "Create Your Own Agent"
+                      : "Create Your Own Agent — No Signup Required"}
                     <ArrowRight size={15} />
                   </button>
                 </div>

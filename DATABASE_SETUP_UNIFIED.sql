@@ -449,7 +449,88 @@ ORDER BY cl.created_at DESC;
 
 
 -- ============================================================================
--- Step 10: Similarity search function for knowledge retrieval
+-- Step 10: Transactional create-agent function
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION create_agent_with_custom_fields(
+  p_user_id UUID,
+  p_name TEXT,
+  p_industry TEXT,
+  p_voice_persona TEXT,
+  p_system_prompt TEXT,
+  p_language TEXT DEFAULT 'en-US',
+  p_tools_enabled JSONB DEFAULT '{"capture_information": true, "log_to_crm": true}'::JSONB,
+  p_require_customer_info BOOLEAN DEFAULT false,
+  p_collect_bant_info BOOLEAN DEFAULT false,
+  p_custom_fields JSONB DEFAULT '[]'::JSONB
+)
+RETURNS SETOF voice_agents
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_agent voice_agents%ROWTYPE;
+BEGIN
+  INSERT INTO voice_agents (
+    user_id,
+    name,
+    industry,
+    voice_persona,
+    system_prompt,
+    language,
+    tools_enabled,
+    require_customer_info,
+    collect_bant_info
+  )
+  VALUES (
+    p_user_id,
+    p_name,
+    p_industry,
+    p_voice_persona,
+    p_system_prompt,
+    p_language,
+    COALESCE(p_tools_enabled, '{"capture_information": true, "log_to_crm": true}'::JSONB),
+    COALESCE(p_require_customer_info, false),
+    COALESCE(p_collect_bant_info, false)
+  )
+  RETURNING * INTO v_agent;
+
+  IF jsonb_typeof(COALESCE(p_custom_fields, '[]'::JSONB)) = 'array'
+     AND jsonb_array_length(COALESCE(p_custom_fields, '[]'::JSONB)) > 0 THEN
+    INSERT INTO agent_custom_fields (
+      user_id,
+      agent_id,
+      field_name,
+      field_description,
+      field_type,
+      is_required,
+      display_order
+    )
+    SELECT
+      p_user_id,
+      v_agent.id,
+      TRIM(COALESCE(field.field_name, '')),
+      COALESCE(field.field_description, ''),
+      COALESCE(field.field_type, 'text'),
+      COALESCE(field.is_required, false),
+      field.display_order
+    FROM (
+      SELECT
+        (elem->>'field_name') AS field_name,
+        (elem->>'field_description') AS field_description,
+        (elem->>'field_type') AS field_type,
+        ((elem->>'is_required')::BOOLEAN) AS is_required,
+        ordinality - 1 AS display_order
+      FROM jsonb_array_elements(p_custom_fields) WITH ORDINALITY AS t(elem, ordinality)
+    ) AS field;
+  END IF;
+
+  RETURN NEXT v_agent;
+END;
+$$;
+
+
+-- ============================================================================
+-- Step 11: Similarity search function for knowledge retrieval
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION match_agent_knowledge_chunks(
