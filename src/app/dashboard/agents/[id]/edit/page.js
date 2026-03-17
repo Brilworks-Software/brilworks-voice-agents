@@ -10,6 +10,11 @@ import { useGuestMode } from "../../../../../lib/guest/GuestModeContext";
 import GuestBanner from "../../../components/GuestBanner";
 import UpgradeAccountModal from "../../../components/UpgradeAccountModal";
 import { LANGUAGES } from "../../../../components/VoiceAgents/constants";
+import {
+  formatBytes,
+  KNOWLEDGE_UPLOAD_LIMITS,
+  validateKnowledgeFiles,
+} from "@/lib/knowledgeUploadLimits";
 
 const VOICE_PERSONAS = [
   "Professional",
@@ -49,7 +54,7 @@ export default function EditAgentPage() {
   const [existingKnowledgeDocs, setExistingKnowledgeDocs] = useState([]);
   const [previewDoc, setPreviewDoc] = useState(null);
   const [showMigrateModal, setShowMigrateModal] = useState(false);
-  const [knowledgeProgress, setKnowledgeProgress] = useState("");
+  const [knowledgeProgress] = useState("");
 
   const [formData, setFormData] = useState({
     name: "",
@@ -267,11 +272,16 @@ export default function EditAgentPage() {
   };
 
   const updateKnowledgeFiles = (files) => {
-    const selectedFiles = Array.from(files || []);
-    const pdfFiles = selectedFiles.filter(
-      (file) => file.type === "application/pdf",
-    );
-    setKnowledgeFiles(pdfFiles);
+    const { isValid, errors, acceptedFiles } = validateKnowledgeFiles(files);
+
+    if (!isValid) {
+      setError(errors[0] || "Invalid knowledge files");
+      setKnowledgeFiles([]);
+      return;
+    }
+
+    setError("");
+    setKnowledgeFiles(acceptedFiles);
   };
 
   const handleKnowledgeFilesChange = (e) => {
@@ -690,6 +700,11 @@ export default function EditAgentPage() {
 
             <p className="text-sm text-slate-600 mb-4">
               Upload additional PDF files for this agent knowledge base.
+            </p>
+            <p className="text-xs text-slate-500 mb-4">
+              Limits: up to {KNOWLEDGE_UPLOAD_LIMITS.maxFilesPerRequest} PDFs
+              per upload, max{" "}
+              {formatBytes(KNOWLEDGE_UPLOAD_LIMITS.maxFileSizeBytes)} per PDF.
             </p>
 
             {existingKnowledgeDocs.length > 0 && (

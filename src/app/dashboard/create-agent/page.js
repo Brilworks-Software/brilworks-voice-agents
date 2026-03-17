@@ -10,6 +10,11 @@ import { useGuestMode } from "../../../lib/guest/GuestModeContext";
 import GuestBanner from "../components/GuestBanner";
 import UpgradeAccountModal from "../components/UpgradeAccountModal";
 import { LANGUAGES } from "../../components/VoiceAgents/constants";
+import {
+  formatBytes,
+  KNOWLEDGE_UPLOAD_LIMITS,
+  validateKnowledgeFiles,
+} from "@/lib/knowledgeUploadLimits";
 
 const VOICE_PERSONAS = [
   "Professional",
@@ -199,26 +204,6 @@ export default function CreateAgentPage() {
     try {
       const agent = await customAgentsService.createAgent(formData);
 
-      if (formData.custom_fields.length > 0 && agent.id) {
-        try {
-          const session = await authService.getSession();
-          if (!session?.access_token) {
-            throw new Error("User session is not available");
-          }
-
-          await fetch(`/api/agents/${agent.id}/custom-fields`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${session.access_token}`,
-            },
-            body: JSON.stringify({ customFields: formData.custom_fields }),
-          });
-        } catch (err) {
-          console.error("Failed to save custom fields:", err);
-        }
-      }
-
       if (knowledgeFiles.length > 0 && agent.id) {
         await customAgentsService.uploadKnowledgeFiles(
           agent.id,
@@ -235,11 +220,16 @@ export default function CreateAgentPage() {
   };
 
   const updateKnowledgeFiles = (files) => {
-    const selectedFiles = Array.from(files || []);
-    const pdfFiles = selectedFiles.filter(
-      (file) => file.type === "application/pdf",
-    );
-    setKnowledgeFiles(pdfFiles);
+    const { isValid, errors, acceptedFiles } = validateKnowledgeFiles(files);
+
+    if (!isValid) {
+      setError(errors[0] || "Invalid knowledge files");
+      setKnowledgeFiles([]);
+      return;
+    }
+
+    setError("");
+    setKnowledgeFiles(acceptedFiles);
   };
 
   const handleKnowledgeFilesChange = (e) => {
@@ -610,6 +600,11 @@ export default function CreateAgentPage() {
             <p className="text-sm text-slate-600 mb-4">
               Upload one or more PDF files to power this agent with RAG-based
               responses.
+            </p>
+            <p className="text-xs text-slate-500 mb-4">
+              Limits: up to {KNOWLEDGE_UPLOAD_LIMITS.maxFilesPerRequest} PDFs
+              per upload, max{" "}
+              {formatBytes(KNOWLEDGE_UPLOAD_LIMITS.maxFileSizeBytes)} per PDF.
             </p>
 
             <button

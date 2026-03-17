@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { knowledgeBaseService } from "@/services/knowledgeBaseService";
+import {
+  formatBytes,
+  KNOWLEDGE_UPLOAD_LIMITS,
+} from "@/lib/knowledgeUploadLimits";
 
 export const runtime = "nodejs";
 
@@ -110,18 +114,49 @@ export async function POST(request, { params }) {
     }
 
     const formData = await request.formData();
-    const files = formData
+    const rawFiles = formData
       .getAll("files")
-      .filter(
-        (file) => file instanceof File && file.type === "application/pdf",
-      );
+      .filter((file) => file instanceof File);
 
-    if (!files.length) {
+    if (!rawFiles.length) {
       return NextResponse.json(
         { error: "At least one PDF file is required" },
         { status: 400 },
       );
     }
+
+    if (rawFiles.length > KNOWLEDGE_UPLOAD_LIMITS.maxFilesPerRequest) {
+      return NextResponse.json(
+        {
+          error: `Maximum ${KNOWLEDGE_UPLOAD_LIMITS.maxFilesPerRequest} PDFs are allowed per upload`,
+        },
+        { status: 400 },
+      );
+    }
+
+    const nonPdfFile = rawFiles.find((file) => file.type !== "application/pdf");
+    if (nonPdfFile) {
+      return NextResponse.json(
+        {
+          error: `Only PDF files are allowed. '${nonPdfFile.name}' is not a PDF.`,
+        },
+        { status: 400 },
+      );
+    }
+
+    const oversizedFile = rawFiles.find(
+      (file) => file.size > KNOWLEDGE_UPLOAD_LIMITS.maxFileSizeBytes,
+    );
+    if (oversizedFile) {
+      return NextResponse.json(
+        {
+          error: `File '${oversizedFile.name}' exceeds max size of ${formatBytes(KNOWLEDGE_UPLOAD_LIMITS.maxFileSizeBytes)}.`,
+        },
+        { status: 400 },
+      );
+    }
+
+    const files = rawFiles;
 
     let chunksStored = 0;
     const documents = [];
